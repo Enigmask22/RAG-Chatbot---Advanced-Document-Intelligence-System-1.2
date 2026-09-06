@@ -4,7 +4,9 @@
 > file này cho biết **đang làm dở tới đâu** và **lệnh nào để tiếp tục**.
 > Trạng thái chính thức của từng task vẫn nằm ở [`CHECKLIST.md`](CHECKLIST.md).
 >
-> **Phiên mới nhất: 2026-09-06 (18) (cuối file)** — `W5-10` xong, **`W5` 10/11**. Đường phát hành tự động: con trỏ `bundles/CURRENT` + `promote()` đúc bản patch mang `gate.status=PASS` + job đêm gate→đề nghị PR. Lần chạy thật là một lần **từ chối** (`INCOMPARABLE`, exit 2); nhánh PASS diễn tập trên bản sao đĩa thật. Gộp `TD-71` ✅ + `AU-12` ✅ + `TD-82` 🟡. Tiêm 23/23 đỏ — hai phép sống sót ở lượt một đều là **lỗ trong test**. Nợ mới `TD-85`.
+> **Phiên mới nhất: 2026-09-06 (19) (cuối file)** — `W5-11` xong, **`W5` 11/11 — W5 ĐÓNG**. Ablation bộ sinh DeepSeek vs GLM, judge kép. ⭐⭐ Lượt đo **tìm ra một lỗi production trước khi in được con số nào**: khoá cache không mang model sinh. ⭐⭐ **10/11 metric có CI chứa 0 dưới cả hai judge** — tập này không phân biệt được hai model. ⭐⭐ **Self-preference bias thành một con số**: khoảng cách faithfulness **đổi dấu** tuỳ judge nào chấm. Giữ `deepseek-v4-flash` vì p95 **4.842 vs 10.879 ms**. `TD-77` trả xong. Nợ mới `TD-86`. ,54.
+>
+> Phiên trước: **2026-09-06 (18)** — `W5-10` xong, **`W5` 10/11**. Đường phát hành tự động: con trỏ `bundles/CURRENT` + `promote()` đúc bản patch mang `gate.status=PASS` + job đêm gate→đề nghị PR. Lần chạy thật là một lần **từ chối** (`INCOMPARABLE`, exit 2); nhánh PASS diễn tập trên bản sao đĩa thật. Gộp `TD-71` ✅ + `AU-12` ✅ + `TD-82` 🟡. Tiêm 23/23 đỏ — hai phép sống sót ở lượt một đều là **lỗ trong test**. Nợ mới `TD-85`.
 >
 > Phiên trước: **2026-09-05 (17)** — audit toàn cục + `NEW-08`, **10 vá**. 21 phát hiện `AU-01`…`AU-21` từ ba lượt review độc lập; `TD-64` **đóng** bằng cách sửa PHÉP ĐO (citation 0,8308 → **0,8662 ✅**). Món thứ 10 do chính **probe** tìm ra chứ không phải test: `isinstance` trên class trần fail lặng lẽ vì production bọc chuỗi bằng `TracedRetriever`.
 >
@@ -4469,3 +4471,92 @@ hữu con số p95 chính thức và cost/query, phải chạy lại hiệu ch�
 (`TD-77`), và nó là chỗ trả của `TD-83` lẫn `TD-70`. Xong `W5-11` là `W5` 11/11.
 Song song: `TD-13` vẫn là việc của bạn (~1 buổi) để gỡ chữ "model-reviewed" khỏi
 golden set.
+
+---
+
+## 2026-09-06 (19) — `W5-11`: ablation bộ sinh, và một golden set không phân biệt được hai model
+
+**Xong**: `W5-11` — **`W5` 11/11**. `W5` đóng hoàn toàn.
+
+**Phạm vi bạn chốt trước khi chạy**: hai nhánh API (**DeepSeek vs GLM** — không
+có `OPENROUTER_API_KEY`, nhánh vLLM cần GPU thuê nên `TD-30` giữ nguyên mức), và
+**judge kép**. Cả hai quyết định đều tiêu tiền thật nên tôi hỏi trước; ngân sách
+ước $2,5, thực chi **$1,54**.
+
+**⭐⭐ Lượt đo tìm ra một lỗi production trước khi in được con số nào.** Lượt
+chạy nhánh A báo 4 cache hit, ba trong số đó ở **đầu** file — tức Redis còn
+entry từ phiên trước. Câu hỏi tiếp theo làm hỏng cả thí nghiệm: đổi
+`CHAT_PROVIDER` sang GLM thì nhánh GLM có nhận lại câu trả lời của DeepSeek
+không? Có — `cache_namespace` mang `bundle + prompt + top_k` mà **không mang
+model sinh**. Bảng ablation sẽ so một model với chính nó trong khi mọi con số
+trông bình thường. Và nó không chỉ là bẫy thí nghiệm: `app.py` dựng nhánh sinh
+từ `Settings`, không từ bundle, nên **một lần đổi biến môi trường** — nâng
+model, đổi nhà cung cấp, sửa cấu hình failover — vẫn phát lại lời model cũ tới
+hết **TTL 24 giờ** với `bundle_version` không đổi. Cùng họ với `AU-02`, ở trục
+thứ ba. Vá ba lớp; nhánh A **chạy lại từ đầu với cache tắt** ($0,25 bỏ đi).
+
+**⭐ Và bản vá đầu tiên sai.** Viết `served_model == self.generator` — nhưng
+provider **phân giải bí danh** (`deepseek-chat` → `deepseek-v4-flash`), nên hai
+giá trị ấy lệch nhau hợp lệ ở mọi lượt bình thường và phép so ấy tắt cache oan.
+Tín hiệu failover đúng là model **được yêu cầu**, thứ chỉ đổi khi router thật sự
+chuyển nhánh.
+
+**⭐⭐ 10/11 metric có CI chứa 0 — dưới CẢ HAI judge.** Đọc đúng là *"tập này
+không phân biệt được hai nhánh"*, một phát biểu về cỡ mẫu ít nhất ngang bằng
+phát biểu về hệ thống. Khác biệt duy nhất có ý nghĩa: `citation_coverage`
++0,2255 nghiêng GLM — nhưng GLM trích **nhiều hơn mà sai nhiều hơn** (validity
+0,850 vs 0,868, misattribution ×8), tức một đánh đổi chứ không phải cải thiện →
+`TD-86`. Và mẫu ghép cặp **co xuống 28/242** ở `uncited_grounding`, vì hai model
+có **hình dạng đầu ra** khác nhau — giới hạn thật của phép so ghép cặp trên
+metric do judge sinh, không khắc phục được bằng thêm mẫu.
+
+**⭐⭐ Self-preference bias: từ một câu cảnh báo thành một con số.** DoD chỉ đòi
+"ghi cảnh báo". Judge kép cho bảng 2×2: khoảng cách faithfulness giữa hai model
+là **+0,0195 dưới judge DeepSeek và −0,0017 dưới judge GLM** — **đổi dấu**, và
+nhỏ hơn mức bất đồng giữa hai judge trên cùng một tập câu trả lời. Mỗi judge cho
+họ nhà mình điểm cao hơn. Thứ **không** đổi: dưới cả hai judge, đúng một metric
+đạt ý nghĩa, và nó **tất định** — kết luận đứng trên phần không phụ thuộc ai cầm
+bút chấm. *Nếu chỉ chạy một judge, tôi đã báo "DeepSeek faithful hơn GLM 0,0195"
+và con số ấy sẽ đi vào bundle.*
+
+**Quyết định: giữ `deepseek-v4-flash`** — không phải vì thắng chất lượng mà vì
+ràng buộc đang chặn hệ thống là độ trễ: **p95 4.842 vs 10.879 ms**. GLM rẻ hơn
+2,2× và chậm hơn 2,2×; tiết kiệm $0,0006/câu (~$6/tháng ở 10k câu) không mua nổi
+sáu giây. Ablation vẫn trả về hai thứ: bản đang chạy **không bỏ phí** chất lượng
+đo được, và nhánh failover GLM (cấu hình từ `W4-08`, chưa từng có bằng chứng)
+giờ có nền tảng.
+
+**`TD-77` trả xong**: F1 bộ dò từ chối **0,882** (DeepSeek) → **0,841** (GLM),
+độ chệch +2,2% → +4,7%. Nghi vấn đúng, mức vừa phải, dấu vẫn dương (báo thừa)
+nên không tái lập lỗi tệ nhất của `W5-07`. $0 — đọc lại cache đóng băng.
+
+**⭐ Hai lỗi kiến trúc do chính bộ test bắt**: `pipeline` import `serving`
+(`test_pipeline_does_not_import_serving` — Pipeline Plane phải chạy độc lập trên
+GPU thuê) → bộ dò chuyển xuống `rag_core/generation/refusal.py`, **không** chép
+bản thứ hai vì khi ấy bảng Grafana và bảng hiệu chỉnh đo hai bộ dò khác nhau.
+Và `generation_metrics` **hardcode judge DeepSeek**, tức bảng ablation có
+DeepSeek trong danh sách ứng viên sẽ do chính một ứng viên chấm.
+
+**Tiêm 19 phép, lượt một 14/19.** Năm phép sống sót chia hai loại, cả hai đáng
+giá: **hai điều kiện chết** trong mã (đã xoá — *một điều kiện không thể thay đổi
+hành vi là một chú thích viết bằng cú pháp `if`*), **hai lỗ test** (`f1` đổi
+thành `precision` sống sót vì bài test dựng ví dụ P = R = F1; xoá
+`model_requested` sống sót vì bài test failover chặn ở giá trị khởi tạo), và
+**một sống sót có chủ đích** kèm lý do ghi ngay tại chỗ: hàng rào hiệu năng,
+không thể sinh ra câu trả lời sai.
+
+**Số đo có thẩm quyền, thay hai số cũ**: p95 end-to-end **4.842 ms** (thay 4.706
+của `W5-05` — lượt ấy có 4 cache hit kéo xuống) · cost/query **$0,0010701**
+(thay $0,0016828 của `W5-07` — 242 lượt thay vì 9). p95 vẫn **trượt** 3.500 ms,
+và giờ đã biết đòn bẩy **không** nằm ở đổi model.
+
+**Đo cuối**: 21 test mới · **2 255 xanh** bộ mặc định (2 skip) · lint/mypy sạch
+cả `--platform linux` · **$1,54**.
+
+**Việc tiếp theo**: `W5` đã đóng 11/11 và `G5` ✅. Sang **`W6`** (8 task, 0 xong):
+`W6-01` UI · `TD-57` demo HF Spaces · `TD-56` README · docs · `W6-05` load test
+(gánh `AU-11`, `AU-14`…`AU-17`, và đòn bẩy p95 còn lại là
+`DEFAULT_RERANK_CANDIDATES`) · `W6-06` security pass (gánh `AU-08`/`AU-09`/`AU-10`,
+`TD-58`, và giờ thêm `TD-83`) · cập nhật CV. Song song: `TD-13` vẫn là việc của
+bạn (~1 buổi) để gỡ chữ "model-reviewed" khỏi golden set — nó là điều kiện duy
+nhất còn thiếu của `G1`.

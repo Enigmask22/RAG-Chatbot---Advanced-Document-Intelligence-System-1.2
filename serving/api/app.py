@@ -115,6 +115,27 @@ def _startup_version(settings: Settings) -> str | None:
     return newest.bundle_version
 
 
+def primary_generator(settings: Settings) -> str:
+    """Slug model của nhánh sinh **chính** — thứ đi vào namespace cache. `W5-11`.
+
+    Đọc từ `Settings`, không từ bundle, vì đó chính là chỗ nhánh sinh được chọn
+    (`build_llm`). Trả `""` khi chưa cấu hình được: `ChatService` hiểu chuỗi
+    rỗng là **tắt cache**, thay vì gộp mọi model vào một ô.
+
+    Ghép cả `provider` lẫn `model` chứ không chỉ model: hai nhà cung cấp có thể
+    phục vụ cùng một slug qua hai endpoint khác nhau, và khi đó câu trả lời vẫn
+    là của hai hệ thống khác nhau.
+    """
+    # `"none"` không cần nhánh riêng: nó không có trong bảng, nên `.get` trả
+    # `""` và dòng cuối trả `""`. Phép tiêm `M8` xoá nhánh ấy mà không test nào
+    # đỏ — đúng dấu hiệu của một `if` chỉ để trấn an người đọc.
+    model = settings.chat_model or {
+        "deepseek": DEFAULT_DEEPSEEK_MODEL,
+        "glm": DEFAULT_GLM_MODEL,
+    }.get(settings.chat_provider, "")
+    return f"{settings.chat_provider}:{model}" if model else ""
+
+
 def _qdrant_check(registry: BundleRegistry) -> Check:
     """Phép thử Qdrant đi **qua chính retriever đang phục vụ**, không qua một
     client riêng.
@@ -464,6 +485,7 @@ def create_app(
         llm=llm,
         top_k=resolved.chat_top_k,
         max_tokens=resolved.chat_max_tokens,
+        generator=primary_generator(resolved),
         # ⭐ `extra_body` để trống: từ `W4-08` mỗi `Route` mang bảng của nhà
         # cung cấp mình, và một giá trị ở đây sẽ ghi đè bảng ấy cho MỌI nhánh.
         understanding=build_understanding(resolved, llm),

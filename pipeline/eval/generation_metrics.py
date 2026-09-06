@@ -257,6 +257,21 @@ class Aggregate:
     """Judge trả `NO_CLAIM`: câu dẫn, đề mục, hoặc lời từ chối. Không phải một
     mệnh đề để kiểm — xem docstring `FAITHFULNESS_LABELS`."""
     per_category: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
+    per_query: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
+    """⭐⭐ `W5-11`: cùng những giá trị ấy, khoá theo **truy vấn**.
+
+    `per_category` gộp mất danh tính truy vấn, nên hai lần chạy không **ghép
+    cặp** được — mà ghép cặp đúng là thứ làm cho một bảng ablation có nghĩa.
+    `W2-09` đã trả giá một lần cho bài học này ở tầng truy hồi: `hit_rate@5`
+    "tụt 6,7%" hoá ra là 45 câu xuống 42 câu, chênh **ba câu**. Không có kiểm
+    định thì thứ thắng chỉ là thứ may.
+
+    Là `list` chứ không phải một số: `faithfulness` chấm theo **mệnh đề**, nên
+    một truy vấn đóng góp nhiều giá trị. Điểm cấp truy vấn là trung bình của
+    danh sách ấy — một **macro-average**, khác micro-average mà `value` trả về.
+    Hai con số ấy trả lời hai câu hỏi khác nhau và báo cáo phải nói rõ đang đọc
+    cái nào (xem `paired_values`).
+    """
 
     @property
     def values(self) -> list[float]:
@@ -271,11 +286,25 @@ class Aggregate:
         values = self.values
         return statistics.fmean(values) if values else None
 
-    def add(self, hit: bool, category: str) -> None:
-        self.per_category[category].append(float(hit))
+    def paired_values(self) -> dict[str, float]:
+        """Điểm **một số cho một truy vấn** — đầu vào của bootstrap ghép cặp.
 
-    def add_value(self, score: float, category: str) -> None:
+        Trung bình trong nội bộ truy vấn trước, rồi mới ghép cặp: nếu không thì
+        một truy vấn 12 mệnh đề nặng gấp 12 lần một truy vấn 1 mệnh đề, và mẫu
+        bootstrap sẽ lấy lại theo mệnh đề chứ không theo **đơn vị độc lập** là
+        truy vấn.
+        """
+        return {qid: statistics.fmean(vals) for qid, vals in self.per_query.items() if vals}
+
+    def add(self, hit: bool, category: str, query_id: str | None = None) -> None:
+        self.per_category[category].append(float(hit))
+        if query_id is not None:
+            self.per_query[query_id].append(float(hit))
+
+    def add_value(self, score: float, category: str, query_id: str | None = None) -> None:
         self.per_category[category].append(float(score))
+        if query_id is not None:
+            self.per_query[query_id].append(float(score))
 
     def breakdown(self) -> dict[str, dict[str, float | int]]:
         return {
@@ -335,7 +364,7 @@ def _label_metric(
             # correctness (`W5-02`).
             agg.n_no_evidence += 1
             continue
-        agg.add_value(score, record.category)
+        agg.add_value(score, record.category, record.query_id)
     return agg
 
 
@@ -351,7 +380,7 @@ def citation_coverage(records: Sequence[AnswerRecord]) -> Aggregate:
             agg.n_no_evidence += 1
             continue
         for claim in claims_of(record):
-            agg.add(bool(claim.cited_ns), record.category)
+            agg.add(bool(claim.cited_ns), record.category, record.query_id)
     return agg
 
 
@@ -368,7 +397,7 @@ def citation_validity(records: Sequence[AnswerRecord]) -> Aggregate:
             agg.n_no_evidence += 1
             continue
         for citation in record.citations:
-            agg.add(bool(citation.get("verified")), record.category)
+            agg.add(bool(citation.get("verified")), record.category, record.query_id)
     return agg
 
 
@@ -447,7 +476,7 @@ def score_faithfulness(
         if verdict.label == "NO_CLAIM":
             agg.n_not_a_claim += 1
             continue
-        agg.add(verdict.label == "SUPPORTED", category_of[claim.query_id])
+        agg.add(verdict.label == "SUPPORTED", category_of[claim.query_id], claim.query_id)
     return agg, detail
 
 
@@ -516,7 +545,7 @@ def score_uncited_grounding(
         grounded = verdict.label == "SUPPORTED"
         if not grounded:
             groundless.append(claim)
-        agg.add(grounded, category_of[claim.query_id])
+        agg.add(grounded, category_of[claim.query_id], claim.query_id)
     return agg, groundless
 
 
@@ -551,7 +580,7 @@ def score_relevancy(
         if verdict.label is None:
             agg.n_unjudged += 1
             continue
-        agg.add(verdict.label == "RELEVANT", record.category)
+        agg.add(verdict.label == "RELEVANT", record.category, record.query_id)
     return agg, labels
 
 
@@ -588,7 +617,7 @@ def score_misattribution(
     supported = [claim for claim, verdict in detail if verdict.label == "SUPPORTED"]
     for claim in supported:
         # Được chunk nó trích chống đỡ ⇒ theo định nghĩa không thể gán nhầm.
-        agg.add(False, category_of[claim.query_id])
+        agg.add(False, category_of[claim.query_id], claim.query_id)
 
     questions: list[JudgeQuestion] = []
     asked: list[SentenceClaim] = []
@@ -624,7 +653,7 @@ def score_misattribution(
         hit = verdict.label == "SUPPORTED"
         if hit:
             misattributed.append(claim)
-        agg.add(hit, category_of[claim.query_id])
+        agg.add(hit, category_of[claim.query_id], claim.query_id)
     return agg, misattributed
 
 
@@ -663,11 +692,11 @@ def score_refusal(
             continue
         refused = label == "REFUSAL"
         should_refuse = record.category == "unanswerable"
-        accuracy.add(refused == should_refuse, record.category)
+        accuracy.add(refused == should_refuse, record.category, record.query_id)
         if should_refuse:
-            recall.add(refused, record.category)
+            recall.add(refused, record.category, record.query_id)
         else:
-            false_rate.add(refused, record.category)
+            false_rate.add(refused, record.category, record.query_id)
     return {agg.name: agg for agg in (recall, false_rate, accuracy)}
 
 
@@ -759,12 +788,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     import sys
     from pathlib import Path
 
-    from rag_core.llm import build_deepseek_provider
-    from rag_core.settings import get_settings
+    from rag_core.llm import GLM_BASE_URL
 
     from .answer_run import load_answer_run, load_chunk_sidecar
     from .golden import load_golden_set
-    from .judge import Judge, JudgeConfig
+    from .judge import DEEPSEEK_BASE_URL, DEFAULT_JUDGE_MODEL, JudgeConfig, build_judge
 
     parser = argparse.ArgumentParser(description="W5-01 — chấm tầng sinh")
     parser.add_argument("--run", type=Path, required=True)
@@ -779,6 +807,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Mọi lượt trượt cache là lỗi — chế độ tái lập lại con số đã báo cáo",
     )
+    # ⭐ `W5-11`: judge phải chọn được model. Trước đây provider hardcode DeepSeek,
+    # tức một bảng ablation có DeepSeek trong danh sách ứng viên sẽ do CHÍNH một
+    # ứng viên chấm, và không có cờ nào để kiểm chéo. `TD-66` đã đo được đổi
+    # model judge làm faithfulness dịch 7,5 điểm — lớn hơn mọi cải thiện của cả
+    # `W2` cộng lại, tức đủ để đảo thứ hạng.
+    parser.add_argument(
+        "--judge-model",
+        default=DEFAULT_JUDGE_MODEL,
+        help="slug judge (`deepseek-v4-flash` | `glm-5.3-flash`). Họ suy ra từ slug.",
+    )
+    parser.add_argument(
+        "--judge-base-url",
+        default=None,
+        help="mặc định: endpoint của họ model. Nêu tường minh khi dùng gateway riêng.",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -790,20 +833,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     golden = {query.query_id: query for query in load_golden_set(args.golden)}
 
-    settings = get_settings()
-    config = JudgeConfig(
-        cache_path=args.cache,
-        cap_usd=args.cap_usd,
-        concurrency=args.concurrency,
-        frozen_cache=args.frozen_cache,
+    base_url = args.judge_base_url or (
+        GLM_BASE_URL if args.judge_model.startswith("glm-") else DEEPSEEK_BASE_URL
     )
-    key = settings.deepseek_api_key
-    provider = build_deepseek_provider(
-        config.model,
-        api_key=key.get_secret_value() if key else "",
-        base_url=settings.deepseek_base_url,
+    judge = build_judge(
+        JudgeConfig(
+            model=args.judge_model,
+            base_url=base_url,
+            cache_path=args.cache,
+            cap_usd=args.cap_usd,
+            concurrency=args.concurrency,
+            frozen_cache=args.frozen_cache,
+        )
     )
-    judge = Judge(config, provider)
 
     deterministic = [
         context_precision(run.records, golden, k=args.k),
@@ -832,8 +874,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         # phép đo trên toàn golden set, qua HTTP, kể cả một lượt trúng cache.
         "latency_ms": _latency(run.records),
         "judge": {
-            "model": config.model,
-            "reasoning": config.reasoning,
+            "model": judge.config.model,
+            "family": judge.config.family,
+            "reasoning": judge.config.reasoning,
             "rubrics": sorted(
                 prompt.spec for prompt in judge.registry.all() if prompt.id.startswith("judge-")
             ),
@@ -865,6 +908,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
     target = args.out or args.run.with_name(f"{args.run.stem}-generation.json")
     Path(target).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # ⭐ `W5-11`: điểm cấp truy vấn ra **file riêng**, không nhét vào report.
+    # 242 truy vấn × 11 metric làm report chính phồng lên gấp nhiều lần và đẩy
+    # phần người đọc cần xuống dưới — trong khi thứ duy nhất tiêu thụ nó là
+    # `pipeline.eval.ablation_generation`, một máy đọc.
+    paired = {
+        agg.name: agg.paired_values()
+        for agg in (*deterministic, faith, mis, uncited, relevancy, *refusal.values())
+    }
+    per_query_path = Path(target).with_name(f"{Path(target).stem}-per-query.json")
+    per_query_path.write_text(
+        json.dumps(
+            {"run": run.name, "models": run.models, "judge_model": judge.config.model, **paired},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     headline = {"metrics": report["metrics"], "judge": report["judge"]}
     sys.stdout.write(json.dumps(headline, ensure_ascii=False, indent=2) + "\n")
     sys.stdout.write(f"đã ghi {target}\n")

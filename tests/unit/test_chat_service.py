@@ -110,7 +110,9 @@ class FakeLLM:
             final=LLMResponse(
                 text="".join(self.deltas),
                 model="fake-model-served",
-                model_requested="fake-model",
+                # Mặc định khớp `FakeLLM.model`; đổi được để dựng cảnh failover,
+                # nơi router hỏi nhánh chính nhưng nhánh dự phòng trả lời.
+                model_requested=getattr(self, "final_model_requested", "fake-model"),
                 usage=TokenUsage(prompt_tokens=10, completion_tokens=2, cost_usd=0.0001),
                 finish_reason=self.finish_reason,
             )
@@ -149,7 +151,14 @@ class CapturingService(ChatService):
 
 
 def _service(llm: Any) -> CapturingService:
-    service = CapturingService(registry=None, sessions=None, llm=llm)  # type: ignore[arg-type]
+    # `generator` phải khớp `llm.model`: đầu ghi cache chỉ ghi khi nhánh CHÍNH
+    # đã phục vụ (`W5-11`), nên một fixture khai lệch sẽ tắt cache mà không nói.
+    service = CapturingService(
+        registry=None,  # type: ignore[arg-type]
+        sessions=None,
+        llm=llm,
+        generator=getattr(llm, "model", ""),
+    )
     service.saved = []
     service.saved_full = []
     return service
@@ -861,14 +870,14 @@ class TestCacheNamespace:
         """Một câu trả lời sinh dưới `chat-system@v1` KHÔNG phải câu trả lời
         của `chat-system@v2`: đổi prompt phải invalidate cache như đổi bundle,
         và cách rẻ nhất là cùng cơ chế — version nằm trong khoá."""
-        assert cache_namespace("0.2.0", 5) == "0.2.0+chat-system@v2+k5"
+        assert cache_namespace("0.2.0", 5, "deepseek:m") == "0.2.0+chat-system@v2+k5+gdeepseek:m"
 
     def test_two_top_k_are_two_namespaces(self) -> None:
         """`NEW-08`/`AU-02`: cùng câu hỏi với `top_k=5` và `top_k=20` là hai
         lượt sinh trên hai bộ ngữ cảnh — câu trả lời của lượt này KHÔNG được
         phát lại cho lượt kia. Vào namespace (không phải điều kiện loại) để
         client dùng `top_k` khác mặc định một cách nhất quán vẫn có cache."""
-        assert cache_namespace("0.2.0", 5) != cache_namespace("0.2.0", 20)
+        assert cache_namespace("0.2.0", 5, "g") != cache_namespace("0.2.0", 20, "g")
 
     @pytest.mark.asyncio
     async def test_store_writes_into_the_prompt_scoped_namespace(self) -> None:
@@ -879,7 +888,83 @@ class TestCacheNamespace:
         await _drain(service, _turn(cache_vector=np.ones(4, dtype=np.float32)))
         await asyncio.sleep(0)
 
-        assert cache.stored[0]["bundle"] == "0.2.0+chat-system@v2+k5"
+        assert cache.stored[0]["bundle"] == "0.2.0+chat-system@v2+k5+gfake-model"
+
+    def test_two_generators_are_two_namespaces(self) -> None:
+        """⭐⭐ `W5-11` — lỗi do chính lượt đo của task ấy tìm ra.
+
+        Đổi nhánh sinh sang GLM rồi chạy lại golden set: lượt thứ hai nhận lại
+        **nguyên văn** câu trả lời của DeepSeek, và bảng ablation sẽ so một
+        model với chính nó trong khi mọi con số trông vẫn bình thường.
+
+        `bundle_version` **không** phủ được chuyện này: `app.py` dựng nhánh sinh
+        từ `Settings`, không từ bundle. Nên một lần đổi biến môi trường vẫn phát
+        lại lời model cũ tới hết TTL 24 giờ với `bundle_version` không đổi.
+        """
+        assert cache_namespace("0.2.0", 5, "deepseek:deepseek-v4-flash") != cache_namespace(
+            "0.2.0", 5, "glm:glm-5.3-flash"
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_undeclared_generator_turns_the_cache_off(self) -> None:
+        """Rỗng = **tắt**, không phải "dùng chung một ô".
+
+        Mặc định fail-safe: một namespace thiếu danh tính bộ sinh là một
+        namespace trộn câu trả lời của hai model, và nó hỏng theo kiểu im lặng
+        nhất — `200 OK`, câu trả lời trôi chảy, sai hệ thống.
+        """
+        service = _service(FakeLLM(deltas=("Đáp án.",)))
+        service.generator = ""
+        cache = RecordingCache()
+        service.cache = cache  # type: ignore[assignment]
+
+        await _drain(service, _turn(cache_vector=np.ones(4, dtype=np.float32)))
+        await asyncio.sleep(0)
+
+        assert cache.stored == []
+
+    @pytest.mark.asyncio
+    async def test_the_failover_signal_comes_from_the_final_chunk_not_the_router(self) -> None:
+        """⚠️ Bài test phải để `llm.model` KHỚP bộ sinh và chỉ đổi chunk cuối.
+
+        Bản đầu đổi `service.generator` sang một giá trị khác, nên giá trị khởi
+        tạo `requested_model = self.llm.model` đã tự chặn — và một phép tiêm xoá
+        dòng `requested_model = chunk.final.model_requested` sống sót. Tức bài
+        test canh được *một* điều kiện nhưng mù với chính đường mà failover đi:
+        router nhận request cho nhánh chính rồi trả lời bằng nhánh dự phòng, và
+        chỉ **chunk cuối** biết điều đó.
+        """
+        llm = FakeLLM(deltas=("Đáp án.",))
+        llm.final_model_requested = "model-của-nhánh-dự-phòng"  # type: ignore[attr-defined]
+        service = _service(llm)
+        cache = RecordingCache()
+        service.cache = cache  # type: ignore[assignment]
+
+        await _drain(service, _turn(cache_vector=np.ones(4, dtype=np.float32)))
+        await asyncio.sleep(0)
+
+        assert cache.stored == []
+
+    @pytest.mark.asyncio
+    async def test_a_failover_answer_is_not_written_into_the_primary_namespace(self) -> None:
+        """Một sự cố năm phút không được biến thành 24 giờ phát lại lời của
+        nhà cung cấp dự phòng.
+
+        Tín hiệu là model **được yêu cầu**, không phải model đã phục vụ:
+        provider phân giải bí danh (`deepseek-chat` → `deepseek-v4-flash`) làm
+        hai giá trị ấy lệch nhau một cách hoàn toàn hợp lệ, nên so nhầm vế sẽ
+        tắt cache oan ở mọi lượt bình thường.
+        """
+        llm = FakeLLM(deltas=("Đáp án.",))
+        service = _service(llm)
+        service.generator = "deepseek:một-model-khác"
+        cache = RecordingCache()
+        service.cache = cache  # type: ignore[assignment]
+
+        await _drain(service, _turn(cache_vector=np.ones(4, dtype=np.float32)))
+        await asyncio.sleep(0)
+
+        assert cache.stored == []
 
 
 # ---------------------------------------------------------------------------
@@ -1017,4 +1102,4 @@ async def test_the_cache_is_stored_under_the_top_k_that_produced_the_answer() ->
     )
     await asyncio.sleep(0)
 
-    assert cache.stored[0]["bundle"] == "0.2.0+chat-system@v2+k20"
+    assert cache.stored[0]["bundle"] == "0.2.0+chat-system@v2+k20+gfake-model"

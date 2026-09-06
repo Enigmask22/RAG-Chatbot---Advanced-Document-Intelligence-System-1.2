@@ -1,0 +1,162 @@
+{
+  "baseline": "w511-deepseek",
+  "comparisons": {
+    "w511-glm": {
+      "models": [
+        "glm-5.3-flash"
+      ],
+      "rows": [
+        {
+          "metric": "answer_relevancy",
+          "n": 242,
+          "baseline_macro": 0.7686,
+          "candidate_macro": 0.7851,
+          "diff": 0.0165,
+          "ci95": [
+            -0.0083,
+            0.0413
+          ],
+          "significant": false,
+          "better": "—"
+        },
+        {
+          "metric": "citation_coverage",
+          "n": 241,
+          "baseline_macro": 0.616,
+          "candidate_macro": 0.8414,
+          "diff": 0.2255,
+          "ci95": [
+            0.1788,
+            0.2747
+          ],
+          "significant": true,
+          "better": "ứng viên"
+        },
+        {
+          "metric": "citation_validity",
+          "n": 211,
+          "baseline_macro": 0.8749,
+          "candidate_macro": 0.8455,
+          "diff": -0.0294,
+          "ci95": [
+            -0.069,
+            0.01
+          ],
+          "significant": false,
+          "better": "—"
+        },
+        {
+          "metric": "context_precision@5",
+          "n": 209,
+          "baseline_macro": 0.2096,
+          "candidate_macro": 0.2096,
+          "diff": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "significant": false,
+          "better": "—"
+        },
+        {
+          "metric": "context_recall@5",
+          "n": 209,
+          "baseline_macro": 0.7887,
+          "candidate_macro": 0.7887,
+          "diff": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "significant": false,
+          "better": "—"
+        },
+        {
+          "metric": "faithfulness",
+          "n": 181,
+          "baseline_macro": 0.9571,
+          "candidate_macro": 0.9683,
+          "diff": 0.0112,
+          "ci95": [
+            -0.0222,
+            0.0449
+          ],
+          "significant": false,
+          "better": "—"
+        },
+        {
+          "metric": "false_refusal_rate",
+          "n": 209,
+          "baseline_macro": 0.0909,
+          "candidate_macro": 0.0766,
+          "diff": -0.0144,
+          "ci95": [
+            -0.0431,
+            0.0144
+          ],
+          "significant": false,
+          "better": "—"
+        },
+        {
+          "metric": "misattribution",
+          "n": 179,
+          "baseline_macro": 0.0301,
+          "candidate_macro": 0.0246,
+          "diff": -0.0055,
+          "ci95": [
+            -0.0347,
+            0.023
+          ],
+          "significant": false,
+          "better": "—"
+        },
+        {
+          "metric": "refusal_accuracy",
+          "n": 242,
+          "baseline_macro": 0.9008,
+          "candidate_macro": 0.9132,
+          "diff": 0.0124,
+          "ci95": [
+            -0.0124,
+            0.0413
+          ],
+          "significant": false,
+          "better": "—"
+        },
+        {
+          "metric": "refusal_recall",
+          "n": 33,
+          "baseline_macro": 0.8485,
+          "candidate_macro": 0.8485,
+          "diff": 0.0,
+          "ci95": [
+            -0.0909,
+            0.0909
+          ],
+          "significant": false,
+          "better": "—"
+        },
+        {
+          "metric": "uncited_grounding",
+          "n": 31,
+          "baseline_macro": 0.9032,
+          "candidate_macro": 0.8387,
+          "diff": -0.0645,
+          "ci95": [
+            -0.2258,
+            0.0968
+          ],
+          "significant": false,
+          "better": "—"
+        }
+      ],
+      "warnings": [
+        "`citation_coverage`: mốc 242 câu, ứng viên 241 câu, so trên 241 câu giao nhau",
+        "`citation_validity`: mốc 212 câu, ứng viên 231 câu, so trên 211 câu giao nhau",
+        "`faithfulness`: mốc 186 câu, ứng viên 228 câu, so trên 181 câu giao nhau",
+        "`misattribution`: mốc 185 câu, ứng viên 227 câu, so trên 179 câu giao nhau",
+        "`uncited_grounding`: mốc 101 câu, ứng viên 47 câu, so trên 31 câu giao nhau"
+      ]
+    }
+  }
+}

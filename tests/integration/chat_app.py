@@ -293,6 +293,10 @@ def make() -> FastAPI:
     )
     app = create_app(settings=settings, build_runtime=_build, probe_factory=_probes)
     app.state.chat.llm = ScriptedLLM()
+    # `chat_provider="none"` làm `primary_generator` trả "" (⇒ cache tắt), nên
+    # app test phải tự khai danh tính bộ sinh của mình. Phần sau dấu `:` phải
+    # khớp `model_requested` của `ScriptedLLM` — lệch là cache tắt câm (`W5-11`).
+    app.state.chat.generator = GENERATOR
     mode = os.environ.get(ENV_ROUTER, "")
     if mode:
         # ⭐ Cùng `LLMRouter` của production, chỉ đổi nhà cung cấp giả — nên test
@@ -314,6 +318,10 @@ def make() -> FastAPI:
     if ENV_REWRITE in os.environ:
         app.state.chat.understanding = QueryUnderstanding(llm=ScriptedRewriter())
     return app
+
+
+GENERATOR = "scripted:scripted-model"
+"""Danh tính bộ sinh của app test — cùng giá trị mà bài kiểm namespace dựng lại."""
 
 
 def write_keys(path: Path, keys: dict[str, dict[str, Any]]) -> None:

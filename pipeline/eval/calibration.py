@@ -314,32 +314,19 @@ def _load_run(args: Any) -> tuple[Any, dict[str, str]]:
 def _build_judge(
     args: Any, *, frozen: bool, model: str, base_url: str, cache: Path, reasoning: bool = False
 ) -> Judge:
-    from rag_core.llm import build_deepseek_provider, build_glm_provider
-    from rag_core.settings import get_settings
+    from .judge import JudgeConfig, build_judge
 
-    from .judge import JudgeConfig
-
-    config = JudgeConfig(
-        model=model,
-        base_url=base_url,
-        cache_path=cache,
-        cap_usd=args.cap_usd,
-        concurrency=args.concurrency,
-        frozen_cache=frozen,
-        reasoning=reasoning,
+    return build_judge(
+        JudgeConfig(
+            model=model,
+            base_url=base_url,
+            cache_path=cache,
+            cap_usd=args.cap_usd,
+            concurrency=args.concurrency,
+            frozen_cache=frozen,
+            reasoning=reasoning,
+        )
     )
-    settings = get_settings()
-    if config.family == "glm":
-        key = settings.glm_api_key
-        provider = build_glm_provider(
-            config.model, api_key=key.get_secret_value() if key else "", base_url=config.base_url
-        )
-    else:
-        key = settings.deepseek_api_key
-        provider = build_deepseek_provider(
-            config.model, api_key=key.get_secret_value() if key else "", base_url=config.base_url
-        )
-    return Judge(config, provider)
 
 
 def cmd_sample(args: Any) -> int:

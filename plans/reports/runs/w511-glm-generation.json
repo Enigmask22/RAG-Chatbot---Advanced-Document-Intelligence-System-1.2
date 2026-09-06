@@ -1,0 +1,647 @@
+{
+  "run": "w511-glm",
+  "golden_sha256": "55b6bc417c55ff32e730f13935e4eb66abea90c967cf8b1eb1d6130eaae7f7b0",
+  "bundle_versions": [
+    "0.2.1"
+  ],
+  "prompt_specs": [
+    "chat-system@v2"
+  ],
+  "models": [
+    "glm-5.3-flash"
+  ],
+  "latency_ms": {
+    "n": 242.0,
+    "mean": 5266.1,
+    "p50": 4717.2,
+    "p95": 10879.4,
+    "p99": 14482.6,
+    "max": 19607.9
+  },
+  "judge": {
+    "model": "deepseek-v4-flash",
+    "family": "deepseek",
+    "reasoning": false,
+    "rubrics": [
+      "judge-answer-relevancy@v1",
+      "judge-faithfulness@v2"
+    ],
+    "cache_digest": "17fc0bce09ebd5ff6cd829bf5270a8c469727cb109635275f67b4d94aca7a02e",
+    "hits": 4,
+    "misses": 904,
+    "hit_rate": 0.0044,
+    "repairs": 0,
+    "unparseable": 0,
+    "budget_stopped": 0,
+    "served_models": {
+      "deepseek-v4-flash": 904
+    },
+    "spent_usd": 0.243716
+  },
+  "metrics": {
+    "context_precision@5": {
+      "value": 0.2096,
+      "n": 209,
+      "n_unjudged": 0,
+      "n_no_evidence": 33,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 34,
+          "value": 0.1529
+        },
+        "aggregation": {
+          "n": 26,
+          "value": 0.3462
+        },
+        "cross_lingual": {
+          "n": 43,
+          "value": 0.1256
+        },
+        "factoid": {
+          "n": 68,
+          "value": 0.1824
+        },
+        "multi_hop": {
+          "n": 34,
+          "value": 0.3353
+        },
+        "table_lookup": {
+          "n": 4,
+          "value": 0.1
+        }
+      }
+    },
+    "context_recall@5": {
+      "value": 0.7887,
+      "n": 209,
+      "n_unjudged": 0,
+      "n_no_evidence": 33,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 34,
+          "value": 0.7647
+        },
+        "aggregation": {
+          "n": 26,
+          "value": 0.7436
+        },
+        "cross_lingual": {
+          "n": 43,
+          "value": 0.6279
+        },
+        "factoid": {
+          "n": 68,
+          "value": 0.9118
+        },
+        "multi_hop": {
+          "n": 34,
+          "value": 0.8382
+        },
+        "table_lookup": {
+          "n": 4,
+          "value": 0.5
+        }
+      }
+    },
+    "citation_coverage": {
+      "value": 0.7901,
+      "n": 648,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 86,
+          "value": 0.7442
+        },
+        "aggregation": {
+          "n": 146,
+          "value": 0.8014
+        },
+        "cross_lingual": {
+          "n": 106,
+          "value": 0.8396
+        },
+        "factoid": {
+          "n": 112,
+          "value": 0.8929
+        },
+        "multi_hop": {
+          "n": 114,
+          "value": 0.7982
+        },
+        "table_lookup": {
+          "n": 7,
+          "value": 0.8571
+        },
+        "unanswerable": {
+          "n": 77,
+          "value": 0.5844
+        }
+      }
+    },
+    "citation_validity": {
+      "value": 0.8504,
+      "n": 468,
+      "n_unjudged": 0,
+      "n_no_evidence": 11,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 69,
+          "value": 0.8261
+        },
+        "aggregation": {
+          "n": 79,
+          "value": 0.8734
+        },
+        "cross_lingual": {
+          "n": 78,
+          "value": 0.8462
+        },
+        "factoid": {
+          "n": 106,
+          "value": 0.8113
+        },
+        "multi_hop": {
+          "n": 83,
+          "value": 0.8795
+        },
+        "table_lookup": {
+          "n": 6,
+          "value": 1.0
+        },
+        "unanswerable": {
+          "n": 47,
+          "value": 0.8723
+        }
+      }
+    },
+    "faithfulness": {
+      "value": 0.963,
+      "n": 486,
+      "n_unjudged": 0,
+      "n_no_evidence": 136,
+      "n_not_a_claim": 26,
+      "by_category": {
+        "adversarial": {
+          "n": 64,
+          "value": 0.9531
+        },
+        "aggregation": {
+          "n": 113,
+          "value": 0.9646
+        },
+        "cross_lingual": {
+          "n": 83,
+          "value": 0.988
+        },
+        "factoid": {
+          "n": 100,
+          "value": 0.96
+        },
+        "multi_hop": {
+          "n": 90,
+          "value": 0.9778
+        },
+        "table_lookup": {
+          "n": 6,
+          "value": 0.8333
+        },
+        "unanswerable": {
+          "n": 30,
+          "value": 0.9
+        }
+      }
+    },
+    "misattribution": {
+      "value": 0.0206,
+      "n": 486,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 64,
+          "value": 0.0469
+        },
+        "aggregation": {
+          "n": 113,
+          "value": 0.0177
+        },
+        "cross_lingual": {
+          "n": 83,
+          "value": 0.012
+        },
+        "factoid": {
+          "n": 100,
+          "value": 0.03
+        },
+        "multi_hop": {
+          "n": 90,
+          "value": 0.0
+        },
+        "table_lookup": {
+          "n": 6,
+          "value": 0.0
+        },
+        "unanswerable": {
+          "n": 30,
+          "value": 0.0333
+        }
+      }
+    },
+    "uncited_grounding": {
+      "value": 0.661,
+      "n": 59,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 77,
+      "by_category": {
+        "adversarial": {
+          "n": 8,
+          "value": 0.875
+        },
+        "aggregation": {
+          "n": 16,
+          "value": 0.625
+        },
+        "cross_lingual": {
+          "n": 7,
+          "value": 0.7143
+        },
+        "factoid": {
+          "n": 11,
+          "value": 0.8182
+        },
+        "multi_hop": {
+          "n": 12,
+          "value": 0.4167
+        },
+        "table_lookup": {
+          "n": 1,
+          "value": 1.0
+        },
+        "unanswerable": {
+          "n": 4,
+          "value": 0.5
+        }
+      }
+    },
+    "answer_relevancy": {
+      "value": 0.7769,
+      "n": 242,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 34,
+          "value": 0.8235
+        },
+        "aggregation": {
+          "n": 26,
+          "value": 0.7692
+        },
+        "cross_lingual": {
+          "n": 43,
+          "value": 0.8372
+        },
+        "factoid": {
+          "n": 68,
+          "value": 0.9412
+        },
+        "multi_hop": {
+          "n": 34,
+          "value": 0.9118
+        },
+        "table_lookup": {
+          "n": 4,
+          "value": 1.0
+        },
+        "unanswerable": {
+          "n": 33,
+          "value": 0.1515
+        }
+      }
+    }
+  },
+  "derived": {
+    "overall_groundedness": {
+      "value": 0.9303,
+      "n": 545,
+      "note": "mọi mệnh đề THẬT: có trích nguồn (chấm với nguồn đã trích) + không trích nguồn (chấm với hợp mọi chunk). Loại NO_CLAIM."
+    },
+    "citation_coverage_on_claims": {
+      "value": 0.8917,
+      "n": 545,
+      "note": "mẫu số bỏ 103 câu meta (câu dẫn, đề mục, lời từ chối) mà luật 2 không đòi phải trích nguồn; bản tất định ở trên lấy mẫu số 648 câu"
+    },
+    "not_a_claim_share": {
+      "value": 0.159,
+      "n": 648,
+      "note": "tỉ trọng câu meta trong câu trả lời"
+    }
+  },
+  "refusal": {
+    "refusal_recall": {
+      "value": 0.8485,
+      "n": 33,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "unanswerable": {
+          "n": 33,
+          "value": 0.8485
+        }
+      }
+    },
+    "false_refusal_rate": {
+      "value": 0.0718,
+      "n": 209,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 34,
+          "value": 0.1176
+        },
+        "aggregation": {
+          "n": 26,
+          "value": 0.1154
+        },
+        "cross_lingual": {
+          "n": 43,
+          "value": 0.1163
+        },
+        "factoid": {
+          "n": 68,
+          "value": 0.0294
+        },
+        "multi_hop": {
+          "n": 34,
+          "value": 0.0294
+        },
+        "table_lookup": {
+          "n": 4,
+          "value": 0.0
+        }
+      }
+    },
+    "refusal_accuracy": {
+      "value": 0.9174,
+      "n": 242,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 34,
+          "value": 0.8824
+        },
+        "aggregation": {
+          "n": 26,
+          "value": 0.8846
+        },
+        "cross_lingual": {
+          "n": 43,
+          "value": 0.8837
+        },
+        "factoid": {
+          "n": 68,
+          "value": 0.9706
+        },
+        "multi_hop": {
+          "n": 34,
+          "value": 0.9706
+        },
+        "table_lookup": {
+          "n": 4,
+          "value": 1.0
+        },
+        "unanswerable": {
+          "n": 33,
+          "value": 0.8485
+        }
+      }
+    }
+  },
+  "citation_accuracy": {
+    "quote_level": {
+      "value": 0.8504273504273504,
+      "n": 468,
+      "note": "quote nguyên văn trong đúng chunk được chỉ (W4-09, tất định)"
+    },
+    "claim_level": {
+      "value": 0.9629629629629629,
+      "n": 486,
+      "note": "chunk được trích chống đỡ ý của câu (judge)"
+    },
+    "gate_metric": "quote_level"
+  },
+  "relevancy_labels": {
+    "IRRELEVANT": 1,
+    "PARTIAL": 10,
+    "REFUSAL": 43,
+    "RELEVANT": 188
+  },
+  "faithfulness_labels": {
+    "CONTRADICTED": 7,
+    "NOT_FOUND": 11,
+    "NO_CLAIM": 26,
+    "SUPPORTED": 468
+  },
+  "examples": {
+    "unfaithful": [
+      {
+        "ref": "aggregation-6d65bb4176#s2",
+        "claim": "Về dự báo, chỉ có dự báo tăng trưởng GDP tổng thể ổn định khoảng 6,5% trong trung hạn, không có chi tiết dự báo thay đổi đóng góp của từng yếu tố.",
+        "reason": "Ngữ cảnh không đề cập đến việc thiếu chi tiết dự báo thay đổi đóng góp của từng yếu tố."
+      },
+      {
+        "ref": "aggregation-6d65bb4176#s3",
+        "claim": "Về hạn chế cơ cấu, tài liệu chỉ ghi nhận đóng góp của TFP đang giảm xuống, tăng trưởng năng suất lao động đi ngang quanh 4% và lợi suất trên vốn đầu tư giảm dần, nhưng đây là nhận định định tính, không có tỷ trọng cụ thể.",
+        "reason": "Ngữ cảnh không đề cập đến việc thiếu tỷ trọng cụ thể hay tính định tính của các nhận định."
+      },
+      {
+        "ref": "multi_hop-4494d293b0#s2",
+        "claim": "This makes targeted action economically beneficial because the CGE model assumes a one percent decrease in air pollution augments labor productivity by 0.3 percent, which would make GDP in the NZP scenario 0.8 percent higher in 2030 than in BAU (the Vietnamese version of the passage states 0.6 percent).",
+        "reason": "Ngữ cảnh tiếng Anh nói GDP cao hơn 0,8%, nhưng bản tiếng Việt nói 0,6%, mâu thuẫn về con số."
+      },
+      {
+        "ref": "aggregation-452767eaaf#s3",
+        "claim": "However, its unduly long \"negative\" list would pose a barrier to equitization of larger SOEs — a barrier that Directive 11 helps remove.",
+        "reason": "Ngữ cảnh chỉ nói về danh sách 'negative' trong Decision 58 là rào cản, nhưng không đề cập đến Directive 11 giúp loại bỏ rào cản đó."
+      },
+      {
+        "ref": "aggregation-d4afc393e1#s0",
+        "claim": "According to the report, demand for higher education is driven by demand-side factors—the rise of the middle class and increased high-school graduation rates—and supply-side policies such as diversification, including growth of non-university VET institutions and private sector tertiary education institutions.",
+        "reason": "Ngữ cảnh chỉ đề cập đến các yếu tố phía cầu và chính sách phía cung như đa dạng hóa và tăng trưởng của các cơ sở giáo dục đại học ngoài đại học, nhưng không nói rõ về 'các tổ chức giáo dục đại học tư nhân'."
+      },
+      {
+        "ref": "multi_hop-647a307b4b#s1",
+        "claim": "Về phương pháp luận đo chiều sâu của FTA: chiều sâu được đo theo điểm số từ 0 đến 10 (10 là mức cao nhất), sử dụng phương pháp luận của BCG (2024), trong khi mức độ vận dụng được đo theo phương pháp của Dur và đồng sự (2012).",
+        "reason": "Ngữ cảnh nói chiều sâu và mức độ vận dụng đều được đo theo điểm 0-10, sử dụng phương pháp của Dur và BCG, không tách bạch như mệnh đề."
+      },
+      {
+        "ref": "adversarial-db33384638#s3",
+        "claim": "Tuy nhiên, khung này vẫn có thể được xem là đánh giá cơ sở về vùng đệm thích hợp, dựa trên việc kết hợp các thông số định lượng và định tính một cách có hệ thống và minh bạch.",
+        "reason": "Ngữ cảnh không đề cập đến việc khung này được xem là đánh giá cơ sở về vùng đệm thích hợp hay kết hợp các thông số định lượng và định tính."
+      },
+      {
+        "ref": "factoid-e17af7290f#s1",
+        "claim": "Cụ thể, nguồn 2 nêu rõ nhiều kỹ năng cảm xúc xã hội \"much more malleable between early childhood until adolescence\"; nguồn 1 bổ sung rằng tuổi vị thành niên và đầu tuổi trưởng thành cũng là giai đoạn có thể thay đổi, với các can thiệp như học nghề (apprenticeships) được chứng minh hiệu quả cao.",
+        "reason": "Nguồn 1 nói socio-emotional skills dễ uốn nắn nhất từ thơ ấu đến tuổi vị thành niên, còn nguồn 2 nói tuổi vị thành niên và đầu tuổi trưởng thành là giai đoạn dễ uốn nắn, mâu thuẫn về giai đoạn."
+      },
+      {
+        "ref": "factoid-6b9e9c8f90#s1",
+        "claim": "Related concerns include conflicts of interest, connected-party lending to questionable projects, and circumvention of prudential regulations such as credit concentration limits.",
+        "reason": "Ngữ cảnh không đề cập đến xung đột lợi ích, cho vay liên quan đến bên liên quan hay vi phạm quy định thận trọng."
+      },
+      {
+        "ref": "factoid-01db8ac950#s1",
+        "claim": "Nguồn 2 cũng định nghĩa tương tự: được tính bằng tốc độ tăng thu nhập bình quân tháng theo danh nghĩa của người lao động sau khi đã điều chỉnh theo lạm phát.",
+        "reason": "Ngữ cảnh không đề cập đến 'Nguồn 2' hay định nghĩa tương tự nào khác."
+      },
+      {
+        "ref": "adversarial-21371a2fef#s0",
+        "claim": "Theo ngữ cảnh, thực ra nguồn không nói đồng VND \"mất giá\" vào tháng 4/2007 mà ngược lại: đồng VND đã **lên giá (appreciated)** khoảng 0,4% so với đô la Mỹ vào tháng 4/2007, lần đầu tiên kể từ tháng 7/2004.",
+        "reason": "Ngữ cảnh nói đồng VND lên giá (appreciated) 0,4% vào tháng 4/2007, trái ngược với mệnh đề cho rằng nguồn không nói điều đó."
+      },
+      {
+        "ref": "factoid-45b8640c90#s1",
+        "claim": "Tài liệu chỉ đề cập sửa Nghị định 63/2010 về Kiểm soát thủ tục hành chính (liên quan đến cấp phép kinh doanh, không phải tài chính vi mô), nhưng không có nghị định nào về khung pháp lý quản lý và giám sát tài chính vi mô được nêu.",
+        "reason": "Ngữ cảnh không đề cập đến tài chính vi mô hay nghị định về khung pháp lý quản lý và giám sát tài chính vi mô."
+      }
+    ],
+    "misattributed": [
+      {
+        "ref": "aggregation-452767eaaf#s3",
+        "claim": "However, its unduly long \"negative\" list would pose a barrier to equitization of larger SOEs — a barrier that Directive 11 helps remove.",
+        "cited": [
+          5
+        ]
+      },
+      {
+        "ref": "aggregation-d4afc393e1#s0",
+        "claim": "According to the report, demand for higher education is driven by demand-side factors—the rise of the middle class and increased high-school graduation rates—and supply-side policies such as diversification, including growth of non-university VET institutions and private sector tertiary education institutions.",
+        "cited": [
+          2
+        ]
+      },
+      {
+        "ref": "adversarial-db33384638#s3",
+        "claim": "Tuy nhiên, khung này vẫn có thể được xem là đánh giá cơ sở về vùng đệm thích hợp, dựa trên việc kết hợp các thông số định lượng và định tính một cách có hệ thống và minh bạch.",
+        "cited": [
+          1
+        ]
+      },
+      {
+        "ref": "factoid-e17af7290f#s1",
+        "claim": "Cụ thể, nguồn 2 nêu rõ nhiều kỹ năng cảm xúc xã hội \"much more malleable between early childhood until adolescence\"; nguồn 1 bổ sung rằng tuổi vị thành niên và đầu tuổi trưởng thành cũng là giai đoạn có thể thay đổi, với các can thiệp như học nghề (apprenticeships) được chứng minh hiệu quả cao.",
+        "cited": [
+          2,
+          1
+        ]
+      },
+      {
+        "ref": "factoid-6b9e9c8f90#s1",
+        "claim": "Related concerns include conflicts of interest, connected-party lending to questionable projects, and circumvention of prudential regulations such as credit concentration limits.",
+        "cited": [
+          2
+        ]
+      },
+      {
+        "ref": "factoid-01db8ac950#s1",
+        "claim": "Nguồn 2 cũng định nghĩa tương tự: được tính bằng tốc độ tăng thu nhập bình quân tháng theo danh nghĩa của người lao động sau khi đã điều chỉnh theo lạm phát.",
+        "cited": [
+          2
+        ]
+      },
+      {
+        "ref": "adversarial-21371a2fef#s0",
+        "claim": "Theo ngữ cảnh, thực ra nguồn không nói đồng VND \"mất giá\" vào tháng 4/2007 mà ngược lại: đồng VND đã **lên giá (appreciated)** khoảng 0,4% so với đô la Mỹ vào tháng 4/2007, lần đầu tiên kể từ tháng 7/2004.",
+        "cited": [
+          1
+        ]
+      },
+      {
+        "ref": "adversarial-125587d37e#s4",
+        "claim": "Việc chỉ dựa vào ý kiến chuyên gia thực tế đã dẫn đến rủi ro thiếu nhất quán giữa các tỉnh do chất lượng dữ liệu dựa trên đánh giá chủ quan.",
+        "cited": [
+          1
+        ]
+      },
+      {
+        "ref": "cross_lingual-8d656b7b27#s1",
+        "claim": "Cụ thể, mức thuế này làm giảm thuế suất đối với doanh nghiệp tư nhân trong nước từ 32% xuống 28%, đồng thời tăng thuế suất đối với FIEs từ 25% lên 28%.",
+        "cited": [
+          2
+        ]
+      },
+      {
+        "ref": "unanswerable-4c8b3b5d9d#s1",
+        "claim": "All sources concern Vietnam's banking sector only.",
+        "cited": [
+          2,
+          4,
+          5
+        ]
+      }
+    ],
+    "groundless_uncited": [
+      {
+        "ref": "aggregation-c332ac1180#s0",
+        "claim": "Theo tài liệu, điểm khác biệt là Việt Nam xuất khẩu sang Mỹ, EU kém hiệu quả hơn, còn sang Nhật Bản thì có thể đáp ứng nhu cầu nhập khẩu tăng ở nhiều sản phẩm."
+      },
+      {
+        "ref": "aggregation-e61ecece74#s0",
+        "claim": "Theo báo cáo, năm 2010 số sản phẩm có kim ngạch xuất khẩu của Việt Nam dưới 10 triệu USD tại từng thị trường là:"
+      },
+      {
+        "ref": "aggregation-e1cba94567#s1",
+        "claim": "Specifically, it does not describe reforms relating to microfinance or securities markets, and it only mentions joint stock banks briefly."
+      },
+      {
+        "ref": "aggregation-4f02b39e36#s7",
+        "claim": "Mitigating the social impacts of carbon pricing (Priority Package #5):**"
+      },
+      {
+        "ref": "multi_hop-6ba8b46dfb#s3",
+        "claim": "In other words, the loss of the CIC's periodic supervisory reports removes a valuable information channel at precisely the time when the supervision function is already weak and in need of better inputs to fulfill its role."
+      },
+      {
+        "ref": "aggregation-30fc4cc114#s3",
+        "claim": "Ba lĩnh vực chính sách tương lai được ưu tiên:**"
+      },
+      {
+        "ref": "multi_hop-202aa35e17#s2",
+        "claim": "Cách thức chuyển đổi để đạt thu nhập cao năm 2045:**"
+      },
+      {
+        "ref": "multi_hop-1ac4739c73#s2",
+        "claim": "So 300 / 5 = **60 times larger**."
+      },
+      {
+        "ref": "multi_hop-08cf3a11bf#s1",
+        "claim": "Đặc điểm chính của cách tiếp cận hiện tại của Nghị quyết 68:"
+      },
+      {
+        "ref": "aggregation-173c1edaf8#s0",
+        "claim": "Theo báo cáo, năng suất lao động tăng chậm lại do:"
+      },
+      {
+        "ref": "multi_hop-6986543ebd#s0",
+        "claim": "Theo tài liệu, để các cảng nước sâu Vũng Tàu và Lạch Huyện thành công, World Bank khuyến nghị:"
+      },
+      {
+        "ref": "multi_hop-f9247c1d2d#s2",
+        "claim": "Ngữ cảnh không đề cập các thị trường tiềm năng mới mà gạo Việt Nam có thể mở rộng, cũng như không có nhận định về độ khó của các thị trường mới này."
+      }
+    ]
+  }
+}

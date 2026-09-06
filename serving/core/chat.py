@@ -146,7 +146,7 @@ SYSTEM_PROMPT = CHAT_SYSTEM.text
 NO_RETRIEVAL_SYSTEM_PROMPT = CHAT_NO_RETRIEVAL.text
 
 
-def cache_namespace(bundle_version: str, top_k: int) -> str:
+def cache_namespace(bundle_version: str, top_k: int, generator: str) -> str:
     """`W4-11`: version prompt phải nằm trong namespace cache như bundle_version.
 
     Registry vừa biến prompt thành một biến số có version thì semantic cache
@@ -162,8 +162,23 @@ def cache_namespace(bundle_version: str, top_k: int) -> str:
     của chính tham số API. `top_k` đi vào **namespace** (không phải điều kiện
     loại): một client dùng `top_k` khác mặc định một cách nhất quán vẫn giữ
     được cache của riêng nó.
+
+    ## ⭐⭐ `W5-11`: model sinh cũng vậy — và nó KHÔNG nằm trong `bundle_version`
+
+    Tìm ra bởi chính lượt đo của `W5-11`: đổi nhánh sinh sang GLM thì lượt chạy
+    thứ hai nhận lại nguyên văn câu trả lời của DeepSeek, và bảng ablation sẽ so
+    một model với **chính nó** mà mọi con số trông vẫn bình thường.
+
+    Cám dỗ là bảo `bundle_version` đã phủ rồi. Nó không phủ: `app.py` dựng nhánh
+    sinh từ **`Settings`** (`chat_provider`/`chat_model`), không từ bundle. Nên
+    một lần đổi biến môi trường — nâng model, đổi nhà cung cấp, sửa cấu hình
+    failover — vẫn phát lại câu trả lời của model cũ tới hết TTL 24 giờ, với
+    một `bundle_version` không đổi và không có gì kêu.
+
+    Cùng họ với `AU-02`, ở trục thứ ba: **một khoá cache phải chứa mọi đầu vào
+    làm đổi câu trả lời**, và danh tính bộ sinh là đầu vào lớn nhất trong số đó.
     """
-    return f"{bundle_version}+{CHAT_SYSTEM.spec}+k{top_k}"
+    return f"{bundle_version}+{CHAT_SYSTEM.spec}+k{top_k}+g{generator}"
 
 
 def cache_eligible(
@@ -479,6 +494,16 @@ class ChatService:
     việc kia miễn phí và tất định, không có lý do gì để chúng phụ thuộc vào việc
     cấu hình được một provider."""
 
+    generator: str = ""
+    """Slug của model sinh **chính**, thứ đi vào namespace cache. `W5-11`.
+
+    Rỗng = chưa khai ⇒ **cache tắt**, không phải "dùng chung một ô". Đó là mặc
+    định fail-safe: một namespace thiếu danh tính bộ sinh là một namespace trộn
+    câu trả lời của hai model, và hỏng theo kiểu im lặng nhất — `200 OK`, câu
+    trả lời trôi chảy, sai hệ thống. Thà mất cache còn hơn phát lại lời của một
+    model khác.
+    """
+
     extra_body: Mapping[str, Any] | None = None
     """⭐⭐ Tham số ngoài chuẩn của provider — trong thực tế là `MIN_REASONING`.
 
@@ -608,7 +633,15 @@ class ChatService:
         cache_vector: Any | None = None
         precomputed: Any | None = None
         resolved_top_k = top_k or self.top_k
-        if self.cache is not None and cache_eligible(plan, history, filters):
+        # ⚠️ `and self.generator` ở đây là một **hàng rào hiệu năng**, không
+        # phải hàng rào đúng đắn — phép tiêm `M5` (`W5-11`) xoá nó và **sống
+        # sót** đúng như dự đoán, vì namespace nó đọc (`…+g`) là namespace mà
+        # không đường ghi nào chạm tới được: đầu ghi đã bị điều kiện failover
+        # chặn khi `generator` rỗng. Bỏ nó đi không sinh ra câu trả lời sai, chỉ
+        # sinh ra một lần embed câu hỏi + một lượt Redis mỗi lượt chat, vĩnh
+        # viễn miss. Giữ lại và nói rõ, thay vì thêm một bài test service-level
+        # nặng để canh một thứ không thể sai.
+        if self.cache is not None and self.generator and cache_eligible(plan, history, filters):
             embedder = embedder_of(snapshot.retriever)
             if embedder is not None:
                 with trace.span("cache.lookup", input=plan.question) as span:
@@ -647,7 +680,7 @@ class ChatService:
                     assert cache_vector is not None
                     cached = await self.cache.lookup(
                         principal.tenant_id,
-                        cache_namespace(snapshot.version, resolved_top_k),
+                        cache_namespace(snapshot.version, resolved_top_k, self.generator),
                         plan.question,
                         cache_vector,
                     )
@@ -867,6 +900,11 @@ class ChatService:
 
         holdback = CitationHoldback()
         served_model = self.llm.model
+        # ⭐ `W5-11`: model **được yêu cầu**, tách khỏi model đã phục vụ. Đây là
+        # tín hiệu failover đúng — provider phân giải bí danh (`deepseek-chat` →
+        # `deepseek-v4-flash`) làm hai giá trị lệch nhau một cách hoàn toàn hợp
+        # lệ, nên so `served_model` với cấu hình sẽ tắt cache oan.
+        requested_model = self.llm.model
         # ⭐ `"unknown"` chứ không phải `"client_disconnect"`, và đó là một lựa
         # chọn có chủ đích sau một phép tiêm lỗi **không** đỏ: nếu khởi tạo bằng
         # `"client_disconnect"` thì khối `except` bên dưới chỉ gán lại đúng giá
@@ -925,6 +963,7 @@ class ChatService:
                         yield ChatEvent("delta", {"text": visible})
                 if chunk.final is not None:
                     served_model = chunk.final.model
+                    requested_model = chunk.final.model_requested
                     finish_reason = chunk.final.finish_reason or "stop"
                     usage = {
                         "prompt_tokens": chunk.final.usage.prompt_tokens,
@@ -1048,16 +1087,28 @@ class ChatService:
                 yield ChatEvent("citations", verified_frame)
             if (
                 self.cache is not None
+                # ⚠️ KHÔNG lặp lại `and self.generator` ở đây: phép tiêm `M2`
+                # chứng minh nó không bao giờ đổi được kết quả — điều kiện
+                # failover ngay dưới đã bao nó (`requested_model` không bao giờ
+                # rỗng, nên `generator=""` tự chặn). Một điều kiện không thể
+                # thay đổi hành vi là một chú thích viết bằng cú pháp `if`, và
+                # dự án này đã học đúng bài ấy một lần ở `served_model` bên trên.
                 and turn.cache_vector is not None
                 and finish_reason == "stop"
                 and emitted
+                # ⭐ Chỉ ghi khi nhánh CHÍNH đã phục vụ. Một câu trả lời do
+                # failover sinh ra là câu trả lời của một model khác; ghi nó vào
+                # namespace của nhánh chính là để một sự cố năm phút biến thành
+                # 24 giờ phát lại lời của nhà cung cấp dự phòng. Cùng lý lẽ với
+                # `filters` ở `AU-02`: ca hiếm, xử bằng ĐIỀU KIỆN LOẠI.
+                and requested_model == self.generator.split(":", 1)[-1]
             ):
                 # Ghi cache là việc phụ — chạy nền như đường ghi Postgres, và
                 # cùng lý do phải giữ tham chiếu mạnh (xem `_PENDING`).
                 store_task = asyncio.get_running_loop().create_task(
                     self.cache.store(
                         turn.principal.tenant_id,
-                        cache_namespace(turn.bundle_version, turn.resolved_top_k),
+                        cache_namespace(turn.bundle_version, turn.resolved_top_k, self.generator),
                         turn.plan.question,
                         turn.cache_vector,
                         text="".join(emitted),

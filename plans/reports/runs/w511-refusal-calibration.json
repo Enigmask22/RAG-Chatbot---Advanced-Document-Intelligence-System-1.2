@@ -1,0 +1,49 @@
+{
+  "judge_model": "deepseek-v4-flash",
+  "branches": {
+    "w511-deepseek": {
+      "models": [
+        "deepseek-v4-flash"
+      ],
+      "n": 242,
+      "tp": 41,
+      "fp": 6,
+      "fn": 5,
+      "precision": 0.8723,
+      "recall": 0.8913,
+      "f1": 0.8817,
+      "judge_rate": 0.1901,
+      "detector_rate": 0.1942,
+      "bias": 0.0217,
+      "missed_examples": [
+        "Based on the provided context, the World Bank's Vietnam Development Report 2006 notes that fee exemptions are effective at increasing school enrollment among th",
+        "Dựa trên các nguồn được cung cấp, không có báo cáo nào của World Bank đề cập đến việc giám sát chỉ tập trung vào rủi ro môi trường như ô nhiễm nhựa dùng một lần",
+        "Dựa trên các nguồn được cung cấp, thông tin về đề xuất thuế bảo vệ môi trường đối với xăng dầu năm 2025 là **không đủ** để xác nhận câu hỏi. Các nguồn [1], [2] ",
+        "Based on the provided context, the estimated cost for climate-resilient actions in the Mekong and coastal areas is **$30–40 billion between 2022 and 2030**, not",
+        "Dựa trên các tài liệu được cung cấp, tôi không thể xác định chính xác tốc độ tăng trưởng GDP thực tế của Việt Nam trong giai đoạn 2011-2015 là bao nhiêu phần tr"
+      ]
+    },
+    "w511-glm": {
+      "models": [
+        "glm-5.3-flash"
+      ],
+      "n": 242,
+      "tp": 37,
+      "fp": 8,
+      "fn": 6,
+      "precision": 0.8222,
+      "recall": 0.8605,
+      "f1": 0.8409,
+      "judge_rate": 0.1777,
+      "detector_rate": 0.186,
+      "bias": 0.0465,
+      "missed_examples": [
+        "Theo ngữ cảnh được cung cấp, thông tin không đủ đầy để trả lời chính xác câu hỏi.  - Nguồn [4] (báo cáo \"Taking Stock\" 12/2005) cho biết tỷ lệ cổ phần bán cho b",
+        "The context does not provide information about Japanese firms in the Philippines. The JETRO survey cited in the \"Vibrant Vietnam\" report only states that Japane",
+        "The context does not provide this figure. The 2013 report [1] and [4] show Korea's technological structure of manufactured exports only for 2000 and 2010 (high-",
+        "The report does not provide a cost figure for the Mekong Delta specifically by 2050. What it does state is that the bulk of financing will go to climate-resilie",
+        "Ngữ cảnh được cung cấp không chứa số liệu về tốc độ tăng trưởng GDP thực tế của Việt Nam trung bình hằng năm trong giai đoạn 2011-2015. Các nguồn chỉ đề cập: tă"
+      ]
+    }
+  }
+}

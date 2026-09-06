@@ -96,6 +96,7 @@ __all__ = [
     "JudgeQuestion",
     "JudgeStats",
     "JudgeVerdict",
+    "build_judge",
     "judge_registry",
 ]
 
@@ -234,6 +235,38 @@ class JudgeConfig:
         Ghi ra đây để báo cáo không kết luận quá tay.
         """
         return None if self.reasoning else MIN_REASONING[self.family]
+
+
+def build_judge(config: JudgeConfig) -> Judge:
+    """Dựng `Judge` với provider **suy ra từ họ model**, không phải từ tham số.
+
+    ## Vì sao hàm này tồn tại
+
+    `W5-04` (`calibration.py`) đã có đúng đoạn rẽ nhánh này; `W5-11` cần nó lần
+    thứ hai ở `generation_metrics.py`, nơi provider trước giờ **hardcode
+    DeepSeek**. Chép lần thứ hai thì hai bản sẽ lệch, và cách chúng lệch là im
+    lặng: một bên gửi `reasoning_effort` sang DeepSeek — model **nhận rồi bỏ
+    qua** (đo ở `W3-04`) — nên phán quyết vẫn về, vẫn vào cache, chỉ là được
+    sinh dưới một điều kiện khác lời khai.
+
+    Rẽ theo `config.family`, thứ tự nó tự suy ra từ slug, nên không có đường nào
+    để một lời gọi khai một họ và dùng endpoint của họ khác.
+    """
+    from rag_core.llm import build_deepseek_provider, build_glm_provider
+    from rag_core.settings import get_settings
+
+    settings = get_settings()
+    if config.family == "glm":
+        key = settings.glm_api_key
+        provider = build_glm_provider(
+            config.model, api_key=key.get_secret_value() if key else "", base_url=config.base_url
+        )
+    else:
+        key = settings.deepseek_api_key
+        provider = build_deepseek_provider(
+            config.model, api_key=key.get_secret_value() if key else "", base_url=config.base_url
+        )
+    return Judge(config, provider)
 
 
 @dataclass(frozen=True)

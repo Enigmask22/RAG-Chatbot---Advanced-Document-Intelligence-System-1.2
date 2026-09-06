@@ -1,0 +1,550 @@
+{
+  "run": "w511-deepseek",
+  "golden_sha256": "55b6bc417c55ff32e730f13935e4eb66abea90c967cf8b1eb1d6130eaae7f7b0",
+  "bundle_versions": [
+    "0.2.1"
+  ],
+  "prompt_specs": [
+    "chat-system@v2"
+  ],
+  "models": [
+    "deepseek-v4-flash"
+  ],
+  "latency_ms": {
+    "n": 242.0,
+    "mean": 2948.0,
+    "p50": 2598.1,
+    "p95": 4842.4,
+    "p99": 11142.3,
+    "max": 13194.8
+  },
+  "judge": {
+    "model": "deepseek-v4-flash",
+    "family": "deepseek",
+    "reasoning": false,
+    "rubrics": [
+      "judge-answer-relevancy@v1",
+      "judge-faithfulness@v2"
+    ],
+    "cache_digest": "34abf0af961c2b307468681a0249e54736cfc2dafb1e1e6d5633f492c9d32c15",
+    "hits": 0,
+    "misses": 946,
+    "hit_rate": 0.0,
+    "repairs": 0,
+    "unparseable": 0,
+    "budget_stopped": 0,
+    "served_models": {
+      "deepseek-v4-flash": 946
+    },
+    "spent_usd": 0.276866
+  },
+  "metrics": {
+    "context_precision@5": {
+      "value": 0.2096,
+      "n": 209,
+      "n_unjudged": 0,
+      "n_no_evidence": 33,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 34,
+          "value": 0.1529
+        },
+        "aggregation": {
+          "n": 26,
+          "value": 0.3462
+        },
+        "cross_lingual": {
+          "n": 43,
+          "value": 0.1256
+        },
+        "factoid": {
+          "n": 68,
+          "value": 0.1824
+        },
+        "multi_hop": {
+          "n": 34,
+          "value": 0.3353
+        },
+        "table_lookup": {
+          "n": 4,
+          "value": 0.1
+        }
+      }
+    },
+    "context_recall@5": {
+      "value": 0.7887,
+      "n": 209,
+      "n_unjudged": 0,
+      "n_no_evidence": 33,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 34,
+          "value": 0.7647
+        },
+        "aggregation": {
+          "n": 26,
+          "value": 0.7436
+        },
+        "cross_lingual": {
+          "n": 43,
+          "value": 0.6279
+        },
+        "factoid": {
+          "n": 68,
+          "value": 0.9118
+        },
+        "multi_hop": {
+          "n": 34,
+          "value": 0.8382
+        },
+        "table_lookup": {
+          "n": 4,
+          "value": 0.5
+        }
+      }
+    },
+    "citation_coverage": {
+      "value": 0.6126,
+      "n": 697,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 107,
+          "value": 0.5794
+        },
+        "aggregation": {
+          "n": 174,
+          "value": 0.6724
+        },
+        "cross_lingual": {
+          "n": 99,
+          "value": 0.5556
+        },
+        "factoid": {
+          "n": 96,
+          "value": 0.625
+        },
+        "multi_hop": {
+          "n": 123,
+          "value": 0.7642
+        },
+        "table_lookup": {
+          "n": 5,
+          "value": 1.0
+        },
+        "unanswerable": {
+          "n": 93,
+          "value": 0.3656
+        }
+      }
+    },
+    "citation_validity": {
+      "value": 0.8681,
+      "n": 379,
+      "n_unjudged": 0,
+      "n_no_evidence": 30,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 52,
+          "value": 0.7692
+        },
+        "aggregation": {
+          "n": 71,
+          "value": 0.831
+        },
+        "cross_lingual": {
+          "n": 62,
+          "value": 0.7903
+        },
+        "factoid": {
+          "n": 98,
+          "value": 0.9286
+        },
+        "multi_hop": {
+          "n": 71,
+          "value": 0.9155
+        },
+        "table_lookup": {
+          "n": 6,
+          "value": 1.0
+        },
+        "unanswerable": {
+          "n": 19,
+          "value": 1.0
+        }
+      }
+    },
+    "faithfulness": {
+      "value": 0.9825,
+      "n": 400,
+      "n_unjudged": 0,
+      "n_no_evidence": 270,
+      "n_not_a_claim": 27,
+      "by_category": {
+        "adversarial": {
+          "n": 60,
+          "value": 0.9333
+        },
+        "aggregation": {
+          "n": 116,
+          "value": 1.0
+        },
+        "cross_lingual": {
+          "n": 51,
+          "value": 0.9804
+        },
+        "factoid": {
+          "n": 58,
+          "value": 1.0
+        },
+        "multi_hop": {
+          "n": 92,
+          "value": 0.9783
+        },
+        "table_lookup": {
+          "n": 5,
+          "value": 1.0
+        },
+        "unanswerable": {
+          "n": 18,
+          "value": 1.0
+        }
+      }
+    },
+    "misattribution": {
+      "value": 0.0025,
+      "n": 400,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 60,
+          "value": 0.0167
+        },
+        "aggregation": {
+          "n": 116,
+          "value": 0.0
+        },
+        "cross_lingual": {
+          "n": 51,
+          "value": 0.0
+        },
+        "factoid": {
+          "n": 58,
+          "value": 0.0
+        },
+        "multi_hop": {
+          "n": 92,
+          "value": 0.0
+        },
+        "table_lookup": {
+          "n": 5,
+          "value": 0.0
+        },
+        "unanswerable": {
+          "n": 18,
+          "value": 0.0
+        }
+      }
+    },
+    "uncited_grounding": {
+      "value": 0.8492,
+      "n": 126,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 144,
+      "by_category": {
+        "adversarial": {
+          "n": 19,
+          "value": 1.0
+        },
+        "aggregation": {
+          "n": 28,
+          "value": 0.6429
+        },
+        "cross_lingual": {
+          "n": 30,
+          "value": 0.9333
+        },
+        "factoid": {
+          "n": 29,
+          "value": 0.9655
+        },
+        "multi_hop": {
+          "n": 12,
+          "value": 0.6667
+        },
+        "unanswerable": {
+          "n": 8,
+          "value": 0.75
+        }
+      }
+    },
+    "answer_relevancy": {
+      "value": 0.7686,
+      "n": 242,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 34,
+          "value": 0.8235
+        },
+        "aggregation": {
+          "n": 26,
+          "value": 0.7692
+        },
+        "cross_lingual": {
+          "n": 43,
+          "value": 0.8372
+        },
+        "factoid": {
+          "n": 68,
+          "value": 0.9559
+        },
+        "multi_hop": {
+          "n": 34,
+          "value": 0.8529
+        },
+        "table_lookup": {
+          "n": 4,
+          "value": 1.0
+        },
+        "unanswerable": {
+          "n": 33,
+          "value": 0.1212
+        }
+      }
+    }
+  },
+  "derived": {
+    "overall_groundedness": {
+      "value": 0.9506,
+      "n": 526,
+      "note": "mọi mệnh đề THẬT: có trích nguồn (chấm với nguồn đã trích) + không trích nguồn (chấm với hợp mọi chunk). Loại NO_CLAIM."
+    },
+    "citation_coverage_on_claims": {
+      "value": 0.7605,
+      "n": 526,
+      "note": "mẫu số bỏ 171 câu meta (câu dẫn, đề mục, lời từ chối) mà luật 2 không đòi phải trích nguồn; bản tất định ở trên lấy mẫu số 697 câu"
+    },
+    "not_a_claim_share": {
+      "value": 0.2453,
+      "n": 697,
+      "note": "tỉ trọng câu meta trong câu trả lời"
+    }
+  },
+  "refusal": {
+    "refusal_recall": {
+      "value": 0.8485,
+      "n": 33,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "unanswerable": {
+          "n": 33,
+          "value": 0.8485
+        }
+      }
+    },
+    "false_refusal_rate": {
+      "value": 0.0861,
+      "n": 209,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 34,
+          "value": 0.1765
+        },
+        "aggregation": {
+          "n": 26,
+          "value": 0.0385
+        },
+        "cross_lingual": {
+          "n": 43,
+          "value": 0.1163
+        },
+        "factoid": {
+          "n": 68,
+          "value": 0.0441
+        },
+        "multi_hop": {
+          "n": 34,
+          "value": 0.0882
+        },
+        "table_lookup": {
+          "n": 4,
+          "value": 0.0
+        }
+      }
+    },
+    "refusal_accuracy": {
+      "value": 0.905,
+      "n": 242,
+      "n_unjudged": 0,
+      "n_no_evidence": 0,
+      "n_not_a_claim": 0,
+      "by_category": {
+        "adversarial": {
+          "n": 34,
+          "value": 0.8235
+        },
+        "aggregation": {
+          "n": 26,
+          "value": 0.9615
+        },
+        "cross_lingual": {
+          "n": 43,
+          "value": 0.8837
+        },
+        "factoid": {
+          "n": 68,
+          "value": 0.9559
+        },
+        "multi_hop": {
+          "n": 34,
+          "value": 0.9118
+        },
+        "table_lookup": {
+          "n": 4,
+          "value": 1.0
+        },
+        "unanswerable": {
+          "n": 33,
+          "value": 0.8485
+        }
+      }
+    }
+  },
+  "citation_accuracy": {
+    "quote_level": {
+      "value": 0.8680738786279684,
+      "n": 379,
+      "note": "quote nguyên văn trong đúng chunk được chỉ (W4-09, tất định)"
+    },
+    "claim_level": {
+      "value": 0.9825,
+      "n": 400,
+      "note": "chunk được trích chống đỡ ý của câu (judge)"
+    },
+    "gate_metric": "quote_level"
+  },
+  "relevancy_labels": {
+    "PARTIAL": 10,
+    "REFUSAL": 46,
+    "RELEVANT": 186
+  },
+  "faithfulness_labels": {
+    "NOT_FOUND": 7,
+    "NO_CLAIM": 27,
+    "SUPPORTED": 393
+  },
+  "examples": {
+    "unfaithful": [
+      {
+        "ref": "multi_hop-6ba8b46dfb#s0",
+        "claim": "Based on the provided context, the fact that the Credit Information Centre (CIC) no longer provides periodic reports of supervisory value is especially concerning because the financial supervision function in Vietnam remains weak and does not contribute effectively to improvements in the quality of financial reporting of the supervised entities.",
+        "reason": "Ngữ cảnh không đề cập đến việc CIC ngừng cung cấp báo cáo định kỳ có giá trị giám sát."
+      },
+      {
+        "ref": "multi_hop-6ba8b46dfb#s1",
+        "claim": "This means that without the CIC's supervisory reports, there is an additional gap in oversight, compounding the existing weakness in the financial supervision system.",
+        "reason": "Ngữ cảnh nói CIC không còn cung cấp báo cáo giám sát định kỳ, nhưng không đề cập đến việc thiếu hụt này làm trầm trọng thêm điểm yếu trong hệ thống giám sát tài chính."
+      },
+      {
+        "ref": "adversarial-21371a2fef#s2",
+        "claim": "Nguồn cũng nói về việc đồng Việt Nam tăng giá nhẹ trong hai tháng đầu năm 2007, nhưng không đề cập đến tháng 4 hay lý do mất giá.",
+        "reason": "Ngữ cảnh không đề cập đến tháng 4 hay lý do mất giá, chỉ nói về hai tháng đầu năm 2007."
+      },
+      {
+        "ref": "adversarial-58c67d7135#s1",
+        "claim": "Các tài liệu chỉ đề cập đến việc sử dụng ảnh vệ tinh từ năm 2015 đến 2018 để phân tích sự thay đổi độ che phủ,,,.",
+        "reason": "Ngữ cảnh không nói rằng các tài liệu chỉ đề cập đến việc sử dụng ảnh vệ tinh từ 2015 đến 2018; nó còn đề cập đến ảnh Sentinel 2 năm 2018 và các phương pháp khác."
+      },
+      {
+        "ref": "adversarial-674f05cc4b#s1",
+        "claim": "Theo báo cáo \"Taking Stock\" của Ngân hàng Thế giới, tỷ lệ thất nghiệp chính thức của Việt Nam rất thấp, ở mức khoảng 2 phần trăm vào năm 2013.",
+        "reason": "Ngữ cảnh nói tỷ lệ thất nghiệp chính thức rất thấp khoảng 2 phần trăm nhưng không xác định năm 2013."
+      },
+      {
+        "ref": "adversarial-716771ded9#s2",
+        "claim": "Ngoài ra, nguồn có phân tích khác biệt theo giới về vị thế việc làm (ví dụ: nữ chiếm 64% lao động gia đình không hưởng lương), nhưng không khẳng định nam giới chiếm đa số trong lao động phi chính thức.",
+        "reason": "Ngữ cảnh không đề cập đến tỷ lệ nam giới trong lao động phi chính thức."
+      },
+      {
+        "ref": "cross_lingual-4f0d749f87#s5",
+        "claim": "Nếu hỏi về một kịch bản chung, con số phổ biến được nhắc đến là **7%** doanh số bán xe máy hàng năm.",
+        "reason": "Ngữ cảnh không đề cập đến 'kịch bản chung' hay con số 7% doanh số xe máy hàng năm trong bối cảnh đó."
+      }
+    ],
+    "misattributed": [
+      {
+        "ref": "adversarial-674f05cc4b#s1",
+        "claim": "Theo báo cáo \"Taking Stock\" của Ngân hàng Thế giới, tỷ lệ thất nghiệp chính thức của Việt Nam rất thấp, ở mức khoảng 2 phần trăm vào năm 2013.",
+        "cited": [
+          5
+        ]
+      }
+    ],
+    "groundless_uncited": [
+      {
+        "ref": "aggregation-6d65bb4176#s12",
+        "claim": "Điều này cho thấy định hướng tăng tỷ trọng đóng góp của TFP trong tương lai."
+      },
+      {
+        "ref": "aggregation-e61ecece74#s0",
+        "claim": "Dựa trên ngữ cảnh được cung cấp, tại ba thị trường Mỹ, EU và Trung Quốc, năm 2010, Việt Nam có số sản phẩm (trong 20 sản phẩm chế tạo động nhất của từng thị trường) có kim ngạch xuất khẩu dưới 10 triệu USD như sau:"
+      },
+      {
+        "ref": "aggregation-ed7539bd6b#s0",
+        "claim": "Based on the provided context, the key characteristics and investors of the 2006-2007 corporate bond issues were as follows:"
+      },
+      {
+        "ref": "aggregation-83e3bb4cc4#s5",
+        "claim": "Decree 61 addresses these weaknesses by:"
+      },
+      {
+        "ref": "aggregation-3895b9f4ae#s0",
+        "claim": "Based on the provided context, the new regulatory framework for microfinance institutions (MFIs) differed from regulations for joint stock banks in two key ways:"
+      },
+      {
+        "ref": "aggregation-de7c45d9f1#s0",
+        "claim": "Dựa trên các tài liệu được cung cấp, có thể thấy sự khác biệt trong phương pháp định giá dịch vụ thủy sản giữa rừng ngập mặn và đầm phá Tam Giang - Cầu Hai (TGCH) như sau:"
+      },
+      {
+        "ref": "aggregation-de7c45d9f1#s13",
+        "claim": "Do đó, công thức tại Quảng Ninh có thông số tương quan ρ để phản ánh mối liên hệ này."
+      },
+      {
+        "ref": "aggregation-173c1edaf8#s1",
+        "claim": "Nguyên nhân khiến năng suất lao động tăng chậm lại:**"
+      },
+      {
+        "ref": "aggregation-173c1edaf8#s7",
+        "claim": "Giải pháp được khuyến nghị để duy trì tăng trưởng và tạo việc làm:**"
+      },
+      {
+        "ref": "multi_hop-6d0070e430#s1",
+        "claim": "Regarding the new law to fight corruption, the context contains conflicting information."
+      },
+      {
+        "ref": "aggregation-f88fe35156#s0",
+        "claim": "Based on the provided context, Decision 271/2003/QD-TTg establishes two main mechanisms for SOE performance:"
+      },
+      {
+        "ref": "multi_hop-ff75da4eee#s0",
+        "claim": "Dựa trên các nguồn được cung cấp, để tăng cường kết nối đa phương thức giữa giao thông đường bộ và đường thủy, cần tăng cường các yếu tố sau:"
+      }
+    ]
+  }
+}
