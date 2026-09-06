@@ -35,6 +35,7 @@ from rag_core.bundle import (
 )
 from rag_core.schemas import RetrievedChunk
 from serving.core.registry import (
+    WARMUP_QUERY,
     ActiveBundle,
     BundleRegistry,
     NoBundleLoadedError,
@@ -128,7 +129,11 @@ def write_bundle(root: Path, version: str, *, collection: str = "rag_bgem3_ctx")
 def registry(tmp_path: Path) -> BundleRegistry:
     for version in ("1.0.0", "1.1.0", "1.2.0"):
         write_bundle(tmp_path, version, collection=f"col_{version.replace('.', '_')}")
-    return BundleRegistry(root=tmp_path, build_runtime=RecordingBuilder())
+    # `warmup=False`: nhóm test này nói về ngữ nghĩa đổi/lùi, và `FakeRetriever`
+    # cố ý CHẶN trong `retrieve()` để dựng cảnh "request đang chạy lúc reload".
+    # Bật làm nóng ở đây thì mỗi `activate()` tự dính đúng cái chặn ấy. Phần làm
+    # nóng có nhóm test riêng bên dưới (`TestWarmup`).
+    return BundleRegistry(root=tmp_path, build_runtime=RecordingBuilder(), warmup=False)
 
 
 def builder_of(registry: BundleRegistry) -> RecordingBuilder:
@@ -376,3 +381,99 @@ def test_concurrent_activations_do_not_interleave(registry: BundleRegistry) -> N
     status = registry.status()
     assert status["active"] != status["rollback_to"]
     assert status["rollback_to"] in {"1.0.0", "1.1.0", "1.2.0"}
+
+
+# ---------------------------------------------------------------------------
+# 8. Làm nóng khi kích hoạt (`TD-72`, quyết ở `W6-05`)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class WarmableRetriever:
+    """Retriever ghi lại mọi truy vấn — kể cả lượt làm nóng."""
+
+    version: str
+    queries: list[str] = field(default_factory=list)
+    fail: bool = False
+
+    @property
+    def name(self) -> str:
+        return f"warmable:{self.version}"
+
+    def retrieve(self, query: str, top_k: int = 10) -> list[RetrievedChunk]:
+        self.queries.append(query)
+        if self.fail:
+            raise RuntimeError("Qdrant chưa lên")
+        return []
+
+
+@dataclass
+class WarmableBuilder:
+    fail: bool = False
+    made: dict[str, WarmableRetriever] = field(default_factory=dict)
+
+    def __call__(self, bundle: RagBundle) -> tuple[Any, None]:
+        retriever = WarmableRetriever(bundle.bundle_version, fail=self.fail)
+        self.made[bundle.bundle_version] = retriever
+        return retriever, None
+
+
+class TestWarmup:
+    """`W6-05` đo: request đầu 13.386 ms so với 4.272 ms nóng (+9,1 s, 3,1×),
+    toàn bộ phần phạt ở `prepare` — kernel CUDA khởi tạo ở `score()` đầu tiên,
+    sau khi `/ready` đã xanh."""
+
+    def _registry(self, tmp_path: Path, *, warmup: bool, fail: bool = False) -> BundleRegistry:
+        for version in ("1.0.0", "1.1.0"):
+            write_bundle(tmp_path, version, collection=f"col_{version.replace('.', '_')}")
+        return BundleRegistry(
+            root=tmp_path, build_runtime=WarmableBuilder(fail=fail), warmup=warmup
+        )
+
+    def test_activate_runs_one_retrieval_before_publishing(self, tmp_path: Path) -> None:
+        registry = self._registry(tmp_path, warmup=True)
+        registry.activate("1.0.0")
+        builder = registry.build_runtime
+        assert isinstance(builder, WarmableBuilder)
+        assert builder.made["1.0.0"].queries == [WARMUP_QUERY]
+
+    def test_warmup_off_touches_nothing(self, tmp_path: Path) -> None:
+        registry = self._registry(tmp_path, warmup=False)
+        registry.activate("1.0.0")
+        builder = registry.build_runtime
+        assert isinstance(builder, WarmableBuilder)
+        assert builder.made["1.0.0"].queries == []
+
+    def test_reload_warms_too_not_just_startup(self, tmp_path: Path) -> None:
+        """⭐⭐ Chế độ hỏng thuộc về KÍCH HOẠT, không phải khởi động.
+
+        `POST /admin/bundle/reload` dựng một runtime mới với trọng số mới, và
+        người dùng ngay sau lệnh reload nhận đúng 13 giây ấy — không có deploy
+        nào để đổ lỗi. Một bản vá đặt ở `lifespan` sẽ bỏ sót đúng đường này.
+        """
+        registry = self._registry(tmp_path, warmup=True)
+        registry.activate("1.0.0")
+        registry.activate("1.1.0")
+        builder = registry.build_runtime
+        assert isinstance(builder, WarmableBuilder)
+        assert builder.made["1.1.0"].queries == [WARMUP_QUERY]
+
+    def test_a_failing_warmup_does_not_block_activation(self, tmp_path: Path) -> None:
+        """⭐ Qdrant chưa lên là chuyện thường lúc container khởi động. Một bản
+        vá latency biến sự cố tạm thời của phụ thuộc thành "không deploy được"
+        đã đổi một vấn đề nhỏ lấy một vấn đề lớn hơn."""
+        registry = self._registry(tmp_path, warmup=True, fail=True)
+        assert registry.activate("1.0.0").version == "1.0.0"
+        assert registry.is_ready
+
+    def test_rollback_does_not_warm_again(self, tmp_path: Path) -> None:
+        """Luật 3 của module: rollback kích hoạt lại CHÍNH object runtime cũ,
+        không dựng lại gì — nên nó cũng đã nóng sẵn. Làm nóng lại ở đây là thêm
+        một chỗ có thể hỏng vào đúng cơ chế không được phép hỏng."""
+        registry = self._registry(tmp_path, warmup=True)
+        registry.activate("1.0.0")
+        registry.activate("1.1.0")
+        builder = registry.build_runtime
+        assert isinstance(builder, WarmableBuilder)
+        registry.rollback()
+        assert builder.made["1.0.0"].queries == [WARMUP_QUERY]

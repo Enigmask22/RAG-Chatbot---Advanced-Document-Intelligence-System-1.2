@@ -1,0 +1,32 @@
+{
+  "n": 8,
+  "question": "Chính sách tài khóa của Việt Nam được khuyến nghị ra sao?",
+  "wall_ms": 9010.8,
+  "completed": 8,
+  "errors": [],
+  "provider_calls": 8,
+  "provider_streaming": 8,
+  "provider_concurrent_peak": 6,
+  "single_flight": false,
+  "cache_hits": 0,
+  "ttft_ms": [
+    3482.1,
+    4133.7,
+    1531.5,
+    2186.2,
+    2825.0,
+    5448.3,
+    4792.0,
+    6074.1
+  ],
+  "total_ms": [
+    6415.8,
+    7074.4,
+    4437.2,
+    5093.8,
+    5736.6,
+    8382.7,
+    7723.3,
+    9006.5
+  ]
+}

@@ -129,4 +129,11 @@ EXPOSE 8000
 # ⚠️ Một worker. `--workers N` nhân số bản sao của BGE-M3 + reranker trong VRAM,
 # và 8 GB của RTX 4060 chỉ chứa được một bộ. Mở rộng theo chiều ngang ở đây là
 # thêm **container**, không phải thêm worker — và nó cần một GPU nữa.
-CMD ["uvicorn", "serving.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+#
+# ⭐ `WEB_CONCURRENCY` thay cho `--workers 1` (`TD-75`, `W6-05`): uvicorn đọc
+# biến này khi không có cờ, và `/metrics` đọc **cùng biến ấy** để phát
+# `rag_scrape_workers`. Với hai chỗ khai riêng, ai đó đổi cờ mà quên biến sẽ
+# làm bản phơi bày khai một giả định không còn đúng — mà cả điểm của gauge đó
+# là để nó nói thật về giả định của mình.
+ENV WEB_CONCURRENCY=1
+CMD ["uvicorn", "serving.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

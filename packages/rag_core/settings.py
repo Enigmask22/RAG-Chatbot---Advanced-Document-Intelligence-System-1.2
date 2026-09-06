@@ -104,6 +104,19 @@ class Settings(BaseSettings):
     lùi khỏi.
     """
 
+    bundle_warmup: bool = True
+    """Chạy một lượt truy hồi giả ngay sau khi kích hoạt bundle (`TD-72`).
+
+    `W6-05` đo trên hệ đang phục vụ: request đầu tiên sau khi tiến trình lên tốn
+    **13.386 ms** so với 4.272 ms của lượt nóng (TTFT 10.469 vs 1.389 ms), và
+    toàn bộ phần phạt nằm ở `prepare` — kernel CUDA của cross-encoder chỉ khởi
+    tạo ở lời gọi `score()` đầu tiên, sau khi `/ready` đã xanh.
+
+    Bật (mặc định) chuyển 9 giây ấy từ **người dùng đầu tiên** sang **quy trình
+    deploy**. Tắt khi thời gian container lên là ràng buộc chặt hơn độ trễ của
+    lượt đầu. Xem `BundleRegistry._warm`.
+    """
+
     bundle_allow_runtime_drift: bool = False
     """Cho chạy bundle mà runtime không khớp `components.retriever_name` (`TD-38`).
 

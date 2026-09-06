@@ -30,6 +30,7 @@ của đúng pod ấy; một 503 kèm bảng phụ thuộc trả lời ngay tạ
 from __future__ import annotations
 
 import logging
+import os
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -41,6 +42,23 @@ from serving.core.registry import BundleRegistry
 __all__ = ["router"]
 
 logger = logging.getLogger(__name__)
+
+
+def _worker_count() -> int:
+    """Số worker mà bản phơi bày này đại diện — `TD-75`.
+
+    Đọc `WEB_CONCURRENCY`, **cùng biến** mà uvicorn dùng để quyết số worker (xem
+    `serving/Dockerfile`). Hai chỗ khai riêng thì gauge sẽ khai một giả định
+    không còn đúng, và một gauge nói dối về giả định của mình còn tệ hơn không
+    có gauge nào.
+    """
+    raw = os.environ.get("WEB_CONCURRENCY", "1")
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        logger.warning("WEB_CONCURRENCY=%r không phải số — báo 1 worker", raw)
+        return 1
+
 
 router = APIRouter(tags=["health"])
 
@@ -126,6 +144,18 @@ def metrics(request: Request) -> Response:
     version = registry.status().get("active")
     if version:
         bag.bundle.labels(version=version).set(1)
+
+    # ⭐⭐ `TD-75`: `prometheus_client` giữ số đo trong bộ nhớ của MỘT tiến trình.
+    # Hôm nay đúng vì chỉ chạy 1 worker (`TD-63`: khoá GPU khiến worker thứ hai
+    # không mua thêm thông lượng). Bật worker thứ hai thì mỗi worker có sổ riêng
+    # và scraper hỏi trúng một cái ngẫu nhiên — bảng tụt đi một nửa mà không có
+    # gì báo, đúng họ "sai theo hướng có lợi".
+    #
+    # Bản vá đúng là `PROMETHEUS_MULTIPROC_DIR`. Bản vá ở đây rẻ hơn và giải
+    # quyết phần nguy hiểm hơn: nó bắt bản phơi bày **tự nói ra giả định của
+    # mình**. Một bảng đọc `rag_scrape_workers > 1` biết ngay mọi con số bên
+    # dưới đang bị chia; không có dòng này thì không ai biết gì cả.
+    bag.scrape_workers.set(_worker_count())
 
     sink = getattr(request.app.state, "trace_sink", None)
     status_of = getattr(sink, "status", None)

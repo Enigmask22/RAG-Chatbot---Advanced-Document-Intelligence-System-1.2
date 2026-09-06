@@ -1,0 +1,18 @@
+{
+  "n": 1,
+  "question": "Tăng trưởng GDP của Việt Nam gần đây ra sao?",
+  "wall_ms": 49.6,
+  "completed": 1,
+  "errors": [],
+  "provider_calls": 0,
+  "provider_streaming": 0,
+  "provider_concurrent_peak": 0,
+  "single_flight": true,
+  "cache_hits": 1,
+  "ttft_ms": [
+    48.5
+  ],
+  "total_ms": [
+    49.6
+  ]
+}

@@ -485,6 +485,38 @@ serve-check:  ## W4-03: hỏi /health + /ready của một tiến trình đang c
 	curl -sS -o /dev/null -w 'ready: HTTP %{http_code}' http://127.0.0.1:8000/ready; echo
 	curl -sS http://127.0.0.1:8000/admin/bundle && echo
 
+# ------------------------------------------------------------------ W6-05
+# Load test. Ba lệnh, chạy ở ba cửa sổ terminal:
+#   1) make loadtest-stub          (provider giả — không tốn tiền)
+#   2) make serve-stub             (server thật trỏ vào stub)
+#   3) make loadtest-sweep         (quét concurrency, ghi báo cáo)
+LT_LEVELS ?= 1,2,4,8,16,32
+LT_DURATION ?= 60
+LT_PROFILE ?= deepseek
+LT_RUN ?= w605-sweep
+
+.PHONY: loadtest-stub
+loadtest-stub:  ## `W6-05`: provider OpenAI-compat giả ở :8099 (PROFILE=fast|deepseek|slow)
+	$(PY) python -m loadtest.stub_llm --port 8099 --profile $(LT_PROFILE)
+
+.PHONY: serve-stub
+serve-stub:  ## `W6-05`: server thật nhưng tầng sinh trỏ vào stub — KHÔNG gọi API trả tiền
+	DEEPSEEK_BASE_URL=http://127.0.0.1:8099 DEEPSEEK_API_KEY=stub-not-a-real-key \
+		$(PY) python -m serving --host 127.0.0.1 --port 8000
+
+.PHONY: loadtest-sweep
+loadtest-sweep:  ## `W6-05`: quét concurrency (LT_LEVELS=… LT_DURATION=… LT_RUN=…)
+	$(PY) python -m loadtest.sweep --levels $(LT_LEVELS) --duration $(LT_DURATION) \
+		--label $(LT_RUN) --metrics-token "$(LT_METRICS_TOKEN)" \
+		--out plans/reports/runs/$(LT_RUN).json
+
+.PHONY: loadtest-dup
+loadtest-dup:  ## `W6-05`: N request TRÙNG nhau đồng thời → đếm lời gọi provider (AU-11)
+	LOADTEST_DUPLICATE=1 $(PY) python -m loadtest.sweep --levels $(LT_LEVELS) \
+		--duration $(LT_DURATION) --label $(LT_RUN)-dup \
+		--metrics-token "$(LT_METRICS_TOKEN)" \
+		--out plans/reports/runs/$(LT_RUN)-dup.json
+
 .PHONY: job-bundle
 job-bundle:  ## W0-08: dựng gói job cho RunPod (git archive + gói request)
 	bash scripts/runpod_job.sh bundle

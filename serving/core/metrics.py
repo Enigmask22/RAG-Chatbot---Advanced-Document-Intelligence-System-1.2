@@ -263,6 +263,12 @@ class RagMetrics:
             ("version",),
             registry=reg,
         )
+        self.scrape_workers = Gauge(
+            "rag_scrape_workers",
+            "Số worker mà bản phơi bày này đại diện. >1 nghĩa là mọi con số "
+            "dưới đây đang bị chia — xem TD-75.",
+            registry=reg,
+        )
 
         self._declare_zero()
 

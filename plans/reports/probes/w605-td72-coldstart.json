@@ -1,0 +1,37 @@
+{
+  "n": 4,
+  "turns": [
+    {
+      "wall_ms": 13386.4,
+      "ttft_ms": 10468.6,
+      "prepare_ms": 9620.05,
+      "ttfb_ms": 824.05,
+      "total_ms": 3740.29
+    },
+    {
+      "wall_ms": 4375.8,
+      "ttft_ms": 1444.0,
+      "prepare_ms": 819.85,
+      "ttfb_ms": 620.26,
+      "total_ms": 3551.04
+    },
+    {
+      "wall_ms": 4304.9,
+      "ttft_ms": 1389.7,
+      "prepare_ms": 766.68,
+      "ttfb_ms": 619.76,
+      "total_ms": 3534.02
+    },
+    {
+      "wall_ms": 4271.6,
+      "ttft_ms": 1353.1,
+      "prepare_ms": 739.42,
+      "ttfb_ms": 610.62,
+      "total_ms": 3528.07
+    }
+  ],
+  "cold_wall_ms": 13386.4,
+  "warm_wall_ms": 4271.6,
+  "penalty_ms": 9114.8,
+  "ratio": 3.13
+}

@@ -4,7 +4,9 @@
 > file này cho biết **đang làm dở tới đâu** và **lệnh nào để tiếp tục**.
 > Trạng thái chính thức của từng task vẫn nằm ở [`CHECKLIST.md`](CHECKLIST.md).
 >
-> **Phiên mới nhất: 2026-09-06 (19) (cuối file)** — `W5-11` xong, **`W5` 11/11 — W5 ĐÓNG**. Ablation bộ sinh DeepSeek vs GLM, judge kép. ⭐⭐ Lượt đo **tìm ra một lỗi production trước khi in được con số nào**: khoá cache không mang model sinh. ⭐⭐ **10/11 metric có CI chứa 0 dưới cả hai judge** — tập này không phân biệt được hai model. ⭐⭐ **Self-preference bias thành một con số**: khoảng cách faithfulness **đổi dấu** tuỳ judge nào chấm. Giữ `deepseek-v4-flash` vì p95 **4.842 vs 10.879 ms**. `TD-77` trả xong. Nợ mới `TD-86`. ,54.
+> **Phiên mới nhất: 2026-09-06 (20) (cuối file)** — `W6-05` xong, **`W6` 1/8**. Load test. **Trần thông lượng một instance: 1,33 req/s (~80 req/phút)**, bão hoà giữa u=8 và u=16. ⭐⭐ **Một load test gọi DeepSeek thật là một load test đo DeepSeek** → stub hiệu chỉnh theo 242 request thật, chi phí **$0**. ⭐⭐ **`completion` đứng yên 4,9 s suốt 6 bậc trong khi `rerank` đi 975 → 19.364 ms** — cơ chế bão hoà **là** `TD-63`, trần = **91% của `1/thời-gian-rerank`**. ⭐⭐ **`AU-11`**: 8 câu trùng đồng thời ⇒ 8 lời gọi; nối đuôi ⇒ 0 lời gọi / 50 ms. ⭐⭐ **`TD-72` vá ở `activate` chứ không `lifespan`** — 13.386 → **4.427 ms**. ⭐⭐ Ngân sách p95 3.500 ms **không đạt được bằng tối ưu**, và nó viết trước khi có streaming. Tiêm 21/21 đỏ. Nợ mới `NEW-09`, `NEW-10`.
+>
+> Phiên trước: **2026-09-06 (19)** — `W5-11` xong, **`W5` 11/11 — W5 ĐÓNG**. Ablation bộ sinh DeepSeek vs GLM, judge kép. ⭐⭐ Lượt đo **tìm ra một lỗi production trước khi in được con số nào**: khoá cache không mang model sinh. ⭐⭐ **10/11 metric có CI chứa 0 dưới cả hai judge** — tập này không phân biệt được hai model. ⭐⭐ **Self-preference bias thành một con số**: khoảng cách faithfulness **đổi dấu** tuỳ judge nào chấm. Giữ `deepseek-v4-flash` vì p95 **4.842 vs 10.879 ms**. `TD-77` trả xong. Nợ mới `TD-86`. ,54.
 >
 > Phiên trước: **2026-09-06 (18)** — `W5-10` xong, **`W5` 10/11**. Đường phát hành tự động: con trỏ `bundles/CURRENT` + `promote()` đúc bản patch mang `gate.status=PASS` + job đêm gate→đề nghị PR. Lần chạy thật là một lần **từ chối** (`INCOMPARABLE`, exit 2); nhánh PASS diễn tập trên bản sao đĩa thật. Gộp `TD-71` ✅ + `AU-12` ✅ + `TD-82` 🟡. Tiêm 23/23 đỏ — hai phép sống sót ở lượt một đều là **lỗ trong test**. Nợ mới `TD-85`.
 >
@@ -4560,3 +4562,168 @@ cả `--platform linux` · **$1,54**.
 `TD-58`, và giờ thêm `TD-83`) · cập nhật CV. Song song: `TD-13` vẫn là việc của
 bạn (~1 buổi) để gỡ chữ "model-reviewed" khỏi golden set — nó là điều kiện duy
 nhất còn thiếu của `G1`.
+
+
+---
+
+## Phiên 2026-09-06 (20) · `W6-05` — load test
+
+**Xong**: `W6-05`. `W6` **1/8**. Chi phí **$0**. Báo cáo:
+`reports/tasks/w6-05-loadtest.md`.
+
+### ⭐⭐ Một load test gọi DeepSeek thật là một load test đo DeepSeek
+
+`W5-11` đo: trong p95 4.842 ms, phần của chúng ta (`prepare`) là **787 ms —
+16%**. 84% còn lại nằm sau hàng đợi của một bên thứ ba. Một đường cong bão hoà
+mà số hạng trội là tải hiện tại của DeepSeek thì mô tả DeepSeek, không mô tả
+stack này — và nó tốn tiền theo số mẫu, tức phép đo càng đáng tin càng đắt.
+
+Nên `loadtest/stub_llm.py` thay **đúng một thứ**: lời gọi HTTP tới provider.
+Truy hồi, rerank (kể cả khoá GPU), Qdrant, Postgres, Redis, xác minh trích dẫn
+— tất cả thật. Token giả nhưng theo phân phối **đo được** từ 242 request của
+`W5-11` (600 ms tới token đầu, 6,5 ms/token, 185 token).
+
+**Phép kiểm hiệu chỉnh**: u=1 cho total p95 **4.300 ms** so với **4.842 ms**
+thật. Stub nhanh hơn 11%, theo một hướng biết trước ⇒ mọi số là **trần trên**.
+
+⭐ Và stub **trích nguyên văn** từ khối `<<<NGUON n nonce>>>` nó nhận được. Một
+stub trả quote bịa sẽ đẩy mọi lượt sang nhánh `invalid` của `W4-09` — nhánh
+**rẻ hơn** — và load test sẽ báo con số lạc quan về đúng chặng đắt thứ hai.
+
+### ⭐⭐ `completion` đứng yên, `rerank` ×20 — nhóm chứng và biến trong một bảng
+
+| chặng, p95 | u=1 | u=8 | u=32 |
+|---|---:|---:|---:|
+| `completion` (thời gian của stub) | 4.917 | 4.905 | **4.854** |
+| `rerank` | 975 | 3.020 | **19.364** |
+| `understand` / `prompt` / `citations` | 10 | 10 | 10 |
+
+`completion` là nhóm chứng: nó không biết gì về tải, và nó không nhúc nhích.
+`rerank` đi gấp **20 lần**. Không còn chỗ nào để đổ lỗi.
+
+**Mô hình một dòng, và nó khớp**: một GPU, một khoá tuần tự hoá, thời gian phục
+vụ ~685 ms ⇒ trần lý thuyết `1/0,685 = 1,46 req/s`. Đo được **1,33 = 91%**. Tức
+trần thông lượng của hệ thống **là** nghịch đảo thời gian rerank — một phát biểu
+kiểm được, không phải một cách nói.
+
+**Hệ quả**: `DEFAULT_RERANK_CANDIDATES` là đòn bẩy **kép**. `W5-11` loại trừ
+"đổi model" cho p95; `W6-05` chỉ ra cùng tham số ấy cũng là đòn bẩy thông lượng
+và ở đó nó **tuyến tính**. Dự báo `c=20`: ~3,3 req/s. ⚠️ Dự báo, không phải số
+đo — cần bundle mới + eval + `make gate` → `NEW-09`.
+
+### ⭐⭐ `AU-11`: 8 câu hỏi giống hệt nhau, 8 lần trả tiền
+
+| | request | gọi provider | trúng cache | total |
+|---|---:|---:|---:|---:|
+| 8 câu **trùng, đồng thời** | 8 | **8** | 0 | p50 6.745 ms |
+| cùng câu ấy, **nối đuôi** | 1 | **0** | 1 | **50 ms** |
+
+Hàng thứ hai là thứ làm hàng thứ nhất có nghĩa: **cache không hỏng**. Thứ thiếu
+là single-flight ở lượt *trượt*. 8× tiền và 8× rerank trên đúng tài nguyên vừa
+được chứng minh là trần của hệ thống.
+
+⭐ `provider_concurrent_peak` dừng ở **6** dù bắn 8 — khoá rerank **che bớt** mức
+nghiêm trọng. Vá `TD-63` mà không vá `AU-11` sẽ làm hoá đơn tăng. → `NEW-10`.
+
+### ⭐⭐ `TD-72`: chỗ vá là `activate`, không phải `lifespan`
+
+| | trước | sau |
+|---|---:|---:|
+| request đầu, wall | 13.386 ms | **4.427 ms** |
+| request đầu, TTFT | 10.469 ms | **1.507 ms** |
+| `prepare` của request đầu | 9.620 ms | 735 ms |
+| thời gian tới `/ready` | ~19,6 s | ~28,1 s |
+
+Phản xạ đầu là làm nóng trong `lifespan`. Nhưng chế độ hỏng không thuộc về
+*khởi động*, nó thuộc về **kích hoạt**: `POST /admin/bundle/reload` dựng runtime
+mới với trọng số mới, và người dùng ngay sau lệnh reload nhận đúng 13 giây ấy —
+**không có deploy nào để đổ lỗi**. Đặt ở `BundleRegistry.activate` thì cả hai
+đường đi qua cùng một lượt làm nóng, và `/ready` tự động đúng.
+
+⭐ Làm nóng hỏng **không** chặn kích hoạt: một bản vá latency biến sự cố tạm thời
+của Qdrant thành "không deploy được" đã đổi vấn đề nhỏ lấy vấn đề lớn hơn.
+⭐ Rollback **không** làm nóng lại — luật 3 của `registry.py`.
+
+⚠️ **Ghi cho `W6-02`**: HF Spaces tier miễn phí *ngủ* rồi cold-start. 28 giây
+khởi động + thời gian HF đánh thức là rủi ro thật cho câu đầu của `G6` ("trong
+30 giây"), và phải đo trên chính Space chứ không suy từ đây.
+
+### ⭐⭐ Ngân sách p95 3.500 ms không đạt được bằng tối ưu
+
+| kịch bản | p95 |
+|---|---:|
+| hôm nay | 4.842 ms |
+| bỏ **toàn bộ** truy hồi + rerank (không tưởng) | 4.055 ms |
+| `c=20` (dự báo) | ~4.431 ms |
+
+Cả hai đều trượt. Và cái p95 ấy **viết ở `W1`, trước khi có streaming**: nó bị
+chi phối bởi độ dài câu trả lời (completion p50 185 token, p95 622 — gấp 3,4
+lần), tức bởi một tính chất của *câu hỏi*, không phải của *hệ thống*. Đo nó bằng
+một ngân sách cố định là phạt sự đầy đủ.
+
+**Đề xuất, và nó là quyết định của bạn**: **thêm** một SLO TTFT, **giữ** dòng
+end-to-end ở ❌ (thay thế là dời cột gôn). Số đo: TTFT p95 **1.400 ms** @ u=1 ·
+2.200 @ u=2 · 4.300 @ u=8 — tức hôm nay hệ thống đạt ngân sách 2 giây cho **≤ 2
+người dùng đồng thời**. Câu ấy khó nghe hơn "p95 4,8 giây", và nó đúng.
+
+### ⭐ Một lỗi của chính dụng cụ, do lượt đo thử bắt
+
+Lượt thử đầu báo `rerank p95 = 9.375 ms` ở **u=1** — một con số không mô tả bậc
+nào: histogram Prometheus là **counter tích luỹ**, nên đọc thẳng cho ra phân vị
+của mọi bậc cộng lại, cộng đúng lượt rerank lạnh của `TD-72`. Nếu không bắt,
+bảng ở trên sẽ nói rerank đã tệ sẵn từ u=1 và toàn bộ kết luận sụp. Bản vá là
+`delta(before, after)` — đúng phép `rate()` làm bằng tay — kèm một test dựng lại
+đúng cảnh ấy.
+
+### `TD-75` / `TD-76`: bắt bảng tự nói ra giả định của mình
+
+`TD-75` **không** vá bằng `PROMETHEUS_MULTIPROC_DIR`: `W6-05` đo được worker thứ
+hai không mua thêm thông lượng, nên độ phức tạp ấy chưa đổi lấy gì. Thay vào đó
+gauge `rag_scrape_workers` đọc `WEB_CONCURRENCY` — **cùng biến** uvicorn dùng
+(Dockerfile bỏ `--workers 1`, chuyển sang `ENV`). Hai chỗ khai riêng thì gauge
+sẽ nói dối về giả định của mình, và thế còn tệ hơn không có gauge nào.
+
+`TD-76`: một dòng chú trên ô `p95 mỗi bước` kèm con số vừa đo — phân vị histogram
+bắt đầu có nghĩa từ vài chục mẫu/phút, mà trần là 1,33 req/s ≈ 80/phút.
+
+### Bốn nợ đo được và **không** phải ràng buộc đang chặn
+
+`AU-14` (pool 5+10 chưa bị chạm — tối đa 6 lượt chồng nhau) · `AU-15`
+(`understand` đứng ở 10 ms suốt 6 bậc ⇒ executor chưa đói) · `AU-16` (lượt trúng
+cache 50 ms; **chưa** đo dưới tải với cache bật) · `AU-17` (phần đắt chính là
+`TD-72`, đã vá; còn lại ~80 ms). Cả bốn giữ trong sổ **kèm số đo**, và sẽ phải
+đo lại nếu `NEW-09` nâng trần lên 3,3 req/s.
+
+⚠️ `TD-51` **không chạm tới được** bằng hồ sơ tải này (lượt hỏi đơn, không có
+hội thoại nhiều lượt). Nói ra thay vì để nó trông như đã được soi.
+
+### Tiêm lỗi
+
+**21 phép, lượt một 17/21.** Một phép không tiêm được (anchor khớp hai chỗ), ba
+lỗ test thật:
+
+* `concurrent_peak = now` thay cho `max(...)` **vẫn đúng** ở kịch bản "vào hết
+  rồi ra hết" — chỉ một chuỗi lên–xuống–lên mới phân biệt được hai phép gán;
+* `WEB_CONCURRENCY=0` không có test nào;
+* và một **điều kiện chết một nửa** trong bộ đọc CSV: `value in {None, "",
+  "N/A"}` đặt trước một `try/except ValueError` — `float("")` và `float("N/A")`
+  đều đã ném `ValueError`, chỉ `float(None)` ném `TypeError`. Bắt cả hai kiểu là
+  đủ, và không còn hai chỗ cùng định nghĩa "giá trị không đọc được".
+
+Sau khi bịt: tiêm lại bốn phép → **4/4 đỏ**.
+
+### Đo cuối
+
+37 test mới (29 `loadtest/` + 5 `TestWarmup` + 3 `TestWorkerGauge`) ·
+ruff/mypy sạch · chi phí **$0**.
+
+### Việc tiếp theo
+
+`W6` còn **7/8**: `W6-01` UI · `W6-02` demo HF Spaces · `W6-03` README ·
+`W6-04` docs · `W6-06` security pass · `W6-07`/`W6-08` CV. Thứ tự đề nghị:
+**`W6-01` → `W6-06` → `W6-02`** — security pass đứng **sau** khi UI tồn tại (để
+nó soi cả bề mặt mới) và **trước** khi có bất cứ thứ gì công khai.
+
+Hai việc mới sinh ra từ lượt này: `NEW-09` (bundle `c=20` — đòn bẩy kép duy nhất
+còn lại) và `NEW-10` (single-flight). Và `TD-13` vẫn là việc của bạn (~1 buổi):
+điều kiện duy nhất còn thiếu của `G1`.

@@ -348,6 +348,40 @@ class TestTheEndpointItself:
         assert _value(_scrape(app), 'rag_chat_turns_total{outcome="stop"}') == first
 
 
+class TestWorkerGauge:
+    """`TD-75`, quyết ở `W6-05`. `prometheus_client` giữ số đo trong bộ nhớ của
+    MỘT tiến trình; bật worker thứ hai thì mỗi worker có sổ riêng và scraper hỏi
+    trúng một cái ngẫu nhiên. Bảng tụt đi một nửa mà không có gì báo."""
+
+    def test_the_exposition_states_how_many_workers_it_speaks_for(self, app: TestClient) -> None:
+        assert _value(_scrape(app), "rag_scrape_workers") == 1.0
+
+    def test_it_reads_the_same_variable_uvicorn_does(
+        self, app: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """⭐ Một nguồn sự thật. Hai chỗ khai riêng thì ai đó đổi số worker mà
+        quên gauge, và gauge sẽ khai một giả định không còn đúng — tệ hơn không
+        có gauge nào."""
+        monkeypatch.setenv("WEB_CONCURRENCY", "4")
+        assert _value(_scrape(app), "rag_scrape_workers") == 4.0
+
+    def test_zero_workers_is_impossible_so_it_reports_one(
+        self, app: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Bản phơi bày này tồn tại nghĩa là có ít nhất một worker đang chạy.
+        Khai 0 biến mọi phép chia trong bảng thành chia cho 0."""
+        monkeypatch.setenv("WEB_CONCURRENCY", "0")
+        assert _value(_scrape(app), "rag_scrape_workers") == 1.0
+
+    def test_a_junk_value_reports_one_instead_of_crashing_the_scrape(
+        self, app: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`/metrics` hỏng nghĩa là mất toàn bộ bảng. Một biến môi trường rác
+        không được phép mua cái giá đó."""
+        monkeypatch.setenv("WEB_CONCURRENCY", "auto")
+        assert _value(_scrape(app), "rag_scrape_workers") == 1.0
+
+
 # ---------------------------------------------------------------------------
 # tiện ích
 # ---------------------------------------------------------------------------

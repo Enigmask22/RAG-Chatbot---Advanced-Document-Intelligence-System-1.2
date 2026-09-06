@@ -2,20 +2,35 @@
   "uid": "rag-health",
   "title": "RAG Health",
   "description": "W5-07. Mọi con số ở đây đọc từ CÙNG cây span mà Langfuse nhận (serving/core/metrics.py), trừ họ rag_http_* đo ở middleware. Ô 'Từ chối' là ƯỚC LƯỢNG bằng từ khoá — phép đo thật là W5-02 (judge).",
-  "tags": ["rag", "w5-07"],
+  "tags": [
+    "rag",
+    "w5-07"
+  ],
   "timezone": "browser",
   "editable": false,
   "schemaVersion": 39,
   "version": 1,
   "refresh": "30s",
-  "time": {"from": "now-6h", "to": "now"},
-  "templating": {"list": []},
-  "annotations": {"list": []},
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
   "panels": [
     {
       "type": "row",
       "title": "RED — có đang phục vụ được không",
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "collapsed": false,
       "panels": []
     },
@@ -23,17 +38,64 @@
       "type": "stat",
       "title": "Scrape sống?",
       "description": "`max(...)` vì job có hai đích — API chạy trong container (`api:8000`) hoặc trên máy chủ (`host.docker.internal:8000`), và không bao giờ cả hai. Ô ĐẦU TIÊN của bảng, có chủ đích. Prometheus không đọc được /metrics (API tắt, khoá sai, hết hạn mức) làm MỌI ô còn lại trống — và một biểu đồ trống trông y hệt 'không có traffic'. Không có ô này thì cả bảng nói dối một cách im lặng.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 5, "w": 4, "x": 0, "y": 1},
-      "targets": [{"refId": "A", "expr": "max(up{job=\"rag-serving\"})", "instant": true}],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(up{job=\"rag-serving\"})",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background"
+      },
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            {"type": "value", "options": {"0": {"text": "KHÔNG SCRAPE ĐƯỢC", "color": "red", "index": 0}}},
-            {"type": "value", "options": {"1": {"text": "OK", "color": "green", "index": 1}}}
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "KHÔNG SCRAPE ĐƯỢC",
+                  "color": "red",
+                  "index": 0
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "OK",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
           ],
-          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          }
         },
         "overrides": []
       }
@@ -42,33 +104,83 @@
       "type": "stat",
       "title": "Request / giây",
       "description": "rag_http_* đếm ở middleware nên nó thấy CẢ 401/429/404. Bộ đếm dựng từ cây span chỉ thấy lượt đã qua auth — dùng nó một mình thì một sự cố khoá API hiện ra là traffic bằng 0.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 5, "w": 5, "x": 4, "y": 1},
-      "targets": [{"refId": "A", "expr": "sum(rate(rag_http_requests_total[$__rate_interval]))"}],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "graphMode": "area"},
-      "fieldConfig": {"defaults": {"unit": "reqps", "decimals": 3}, "overrides": []}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 4,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(rag_http_requests_total[$__rate_interval]))"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 3
+        },
+        "overrides": []
+      }
     },
     {
       "type": "stat",
       "title": "Tỉ lệ 5xx",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 5, "w": 5, "x": 9, "y": 1},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 9,
+        "y": 1
+      },
       "targets": [
         {
           "refId": "A",
           "expr": "sum(rate(rag_http_requests_total{status=~\"5..\"}[$__rate_interval])) / clamp_min(sum(rate(rag_http_requests_total[$__rate_interval])), 0.0001)"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background"
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "orange", "value": 0.01},
-              {"color": "red", "value": 0.05}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
             ]
           }
         },
@@ -79,24 +191,48 @@
       "type": "stat",
       "title": "% lượt vượt ngân sách 3,5 s",
       "description": "Đếm được chứ không nội suy: bucket le=\"3.5\" tồn tại đúng vì đây là ngưỡng của bảng mục tiêu (xem _DURATION_BUCKETS). W5-05 đo p95 end-to-end 4706 ms trên 242 request — ô này sẽ đỏ, và nó phải đỏ.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 5, "w": 5, "x": 14, "y": 1},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 14,
+        "y": 1
+      },
       "targets": [
         {
           "refId": "A",
           "expr": "1 - (sum(rate(rag_chat_turn_duration_seconds_bucket{le=\"3.5\"}[$__rate_interval])) / clamp_min(sum(rate(rag_chat_turn_duration_seconds_count[$__rate_interval])), 0.0001))"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background"
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "orange", "value": 0.05},
-              {"color": "red", "value": 0.2}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.05
+              },
+              {
+                "color": "red",
+                "value": 0.2
+              }
             ]
           }
         },
@@ -106,28 +242,90 @@
     {
       "type": "stat",
       "title": "Bundle đang phục vụ",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 5, "w": 5, "x": 19, "y": 1},
-      "targets": [{"refId": "A", "expr": "rag_bundle_info", "instant": true, "legendFormat": "{{version}}"}],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "/^version$/"}, "textMode": "name"},
-      "fieldConfig": {"defaults": {}, "overrides": []}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 19,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rag_bundle_info",
+          "instant": true,
+          "legendFormat": "{{version}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^version$/"
+        },
+        "textMode": "name"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
     },
     {
       "type": "timeseries",
       "title": "Thời lượng một lượt /chat — p50 · p95 · p99",
       "description": "Đo từ HANDLER HTTP, nên nó gồm cả prepare() (TD-55: khung `done` bỏ 19,9% thời gian thật).",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
       "targets": [
-        {"refId": "A", "legendFormat": "p50", "expr": "histogram_quantile(0.50, sum by (le) (rate(rag_chat_turn_duration_seconds_bucket[$__rate_interval])))"},
-        {"refId": "B", "legendFormat": "p95", "expr": "histogram_quantile(0.95, sum by (le) (rate(rag_chat_turn_duration_seconds_bucket[$__rate_interval])))"},
-        {"refId": "C", "legendFormat": "p99", "expr": "histogram_quantile(0.99, sum by (le) (rate(rag_chat_turn_duration_seconds_bucket[$__rate_interval])))"}
+        {
+          "refId": "A",
+          "legendFormat": "p50",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(rag_chat_turn_duration_seconds_bucket[$__rate_interval])))"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(rag_chat_turn_duration_seconds_bucket[$__rate_interval])))"
+        },
+        {
+          "refId": "C",
+          "legendFormat": "p99",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(rag_chat_turn_duration_seconds_bucket[$__rate_interval])))"
+        }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 5},
-          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 3.5}]}
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 5
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 3.5
+              }
+            ]
+          }
         },
         "overrides": []
       }
@@ -135,44 +333,107 @@
     {
       "type": "timeseries",
       "title": "Request / giây theo route và status",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
       "targets": [
-        {"refId": "A", "legendFormat": "{{route}} {{status}}", "expr": "sum by (route, status) (rate(rag_http_requests_total[$__rate_interval]))"}
+        {
+          "refId": "A",
+          "legendFormat": "{{route}} {{status}}",
+          "expr": "sum by (route, status) (rate(rag_http_requests_total[$__rate_interval]))"
+        }
       ],
       "fieldConfig": {
-        "defaults": {"unit": "reqps", "custom": {"drawStyle": "line", "lineWidth": 1, "stacking": {"mode": "normal"}, "fillOpacity": 30}},
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 30
+          }
+        },
         "overrides": []
       }
     },
     {
       "type": "row",
       "title": "Từng bước — thời gian đi đâu",
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 14},
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
       "collapsed": false,
       "panels": []
     },
     {
       "type": "timeseries",
       "title": "p95 mỗi bước",
-      "description": "Đọc thẳng từ cây span của W5-06. Đây là ô đã đảo ngược một kết luận: 'truy hồi' hoá ra là 44,8 ms tìm + 685,3 ms rerank.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 9, "w": 14, "x": 0, "y": 15},
+      "description": "Đọc thẳng từ cây span của W5-06. Đây là ô đã đảo ngược một kết luận: 'truy hồi' hoá ra là 44,8 ms tìm + 685,3 ms rerank. ⚠️ TD-76: histogram_quantile NỘI SUY TUYẾN TÍNH trong bucket, không đo. Ở lưu lượng thấp một mẫu rơi vào bucket (10, 20] kéo p95 lên 15,5 s trong khi lượt chậm nhất thật ~10 s. Con số này bắt đầu có nghĩa từ vài chục mẫu/phút trở lên — W6-05 đo trần thông lượng là 1,33 req/s.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 14,
+        "x": 0,
+        "y": 15
+      },
       "targets": [
-        {"refId": "A", "legendFormat": "{{stage}}", "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(rag_stage_duration_seconds_bucket[$__rate_interval])))"}
+        {
+          "refId": "A",
+          "legendFormat": "{{stage}}",
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(rag_stage_duration_seconds_bucket[$__rate_interval])))"
+        }
       ],
       "fieldConfig": {
-        "defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 0}},
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0
+          }
+        },
         "overrides": []
       },
-      "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]}}
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        }
+      }
     },
     {
       "type": "gauge",
       "title": "Rerank chiếm bao nhiêu phần truy hồi",
       "description": "sum/sum chứ không phải tỉ lệ hai p95: cộng phân vị của hai đại lượng khác nhau không ra một tỉ lệ có nghĩa. W5-06 đo 92,8% trên 5 lượt đã nóng.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 9, "w": 5, "x": 14, "y": 15},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 5,
+        "x": 14,
+        "y": 15
+      },
       "targets": [
         {
           "refId": "A",
@@ -184,7 +445,19 @@
           "unit": "percentunit",
           "min": 0,
           "max": 1,
-          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 0.7}]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.7
+              }
+            ]
+          }
         },
         "overrides": []
       }
@@ -192,8 +465,16 @@
     {
       "type": "stat",
       "title": "Bước chậm nhất ngoài `completion`",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 9, "w": 5, "x": 19, "y": 15},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 5,
+        "x": 19,
+        "y": 15
+      },
       "targets": [
         {
           "refId": "A",
@@ -202,13 +483,30 @@
           "expr": "topk(1, histogram_quantile(0.95, sum by (le, stage) (rate(rag_stage_duration_seconds_bucket{stage!~\"completion|retrieval\"}[$__rate_interval]))))"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "textMode": "value_and_name"},
-      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
     },
     {
       "type": "row",
       "title": "Chất lượng câu trả lời",
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 24},
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
       "collapsed": false,
       "panels": []
     },
@@ -216,34 +514,85 @@
       "type": "stat",
       "title": "Cache hit rate",
       "description": "`hit` + `replay` trên tổng lượt tra. `replay` đếm riêng vì một lượt phát lại từ cache không đi qua cache.lookup ở LƯỢT NÀY — nó đi qua đó ở lượt trước.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 25},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 25
+      },
       "targets": [
         {
           "refId": "A",
           "expr": "sum(rate(rag_cache_lookups_total{result=~\"hit|replay\"}[$__rate_interval])) / clamp_min(sum(rate(rag_cache_lookups_total[$__rate_interval])), 0.0001)"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "graphMode": "area"},
-      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []}
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      }
     },
     {
       "type": "stat",
       "title": "Truy hồi rỗng",
       "description": "Lượt trả về 0 chunk. Chỉ tính span NGOÀI CÙNG của chuỗi — `retrieve.hybrid` mang n_hits=50 (độ sâu pool rerank), đếm nó vào đây thì con số này không bao giờ khác 0.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 25},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 25
+      },
       "targets": [
         {
           "refId": "A",
           "expr": "sum(rate(rag_retrieval_empty_total[$__rate_interval])) / clamp_min(sum(rate(rag_retrieval_hits_count[$__rate_interval])), 0.0001)"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background"
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
-          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 0.02}, {"color": "red", "value": 0.1}]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.02
+              },
+              {
+                "color": "red",
+                "value": 0.1
+              }
+            ]
+          }
         },
         "overrides": []
       }
@@ -252,88 +601,231 @@
       "type": "stat",
       "title": "Từ chối (ƯỚC LƯỢNG)",
       "description": "⚠️ KHÔNG phải phép đo refusal của W5-02. Đó là một nhãn của judge; ở đây là dò từ khoá, vì gọi judge mỗi request thì thêm một lời gọi model vào đường có người đang đợi. Một ước lượng chệch nhưng ổn định thì vô dụng để nói MỨC và hoàn toàn dùng được để nói ĐẠO HÀM — đừng đọc con số, hãy đọc chỗ nó nhảy.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 25},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 25
+      },
       "targets": [
         {
           "refId": "A",
           "expr": "sum(rate(rag_refusals_suspected_total[$__rate_interval])) / clamp_min(sum(rate(rag_chat_turns_total[$__rate_interval])), 0.0001)"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "graphMode": "area"},
-      "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 1}, "overrides": []}
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1
+        },
+        "overrides": []
+      }
     },
     {
       "type": "stat",
       "title": "Câu trả lời KHÔNG trích được nguồn",
       "description": "Tất định, không đoán: W4-09 đối chiếu từng quote với chunk nó chỉ vào. Đọc cạnh ô 'Từ chối' — hai con số này phải đi cùng chiều, và lệch nhau là dấu hiệu bộ dò từ khoá đã lạc.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 25},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 25
+      },
       "targets": [
         {
           "refId": "A",
           "expr": "sum(rate(rag_answers_total{cited=\"no\"}[$__rate_interval])) / clamp_min(sum(rate(rag_answers_total[$__rate_interval])), 0.0001)"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "graphMode": "area"},
-      "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 1}, "overrides": []}
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1
+        },
+        "overrides": []
+      }
     },
     {
       "type": "timeseries",
       "title": "Citation model tuyên bố mà không xác minh được",
       "description": "W4-09. Một quote bịa không thể là HTTP status nữa sau khi stream đã bắt đầu (đường phân giới của W4-06) — nên nó là con số này.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 30},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 30
+      },
       "targets": [
-        {"refId": "A", "legendFormat": "citation hỏng / phút", "expr": "sum(rate(rag_citations_unverified_total[$__rate_interval])) * 60"}
+        {
+          "refId": "A",
+          "legendFormat": "citation hỏng / phút",
+          "expr": "sum(rate(rag_citations_unverified_total[$__rate_interval])) * 60"
+        }
       ],
-      "fieldConfig": {"defaults": {"custom": {"drawStyle": "bars", "fillOpacity": 60}}, "overrides": []}
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "type": "timeseries",
       "title": "Lượt /chat kết thúc thế nào",
       "description": "`outcome` là finish_reason khi lượt tới được nửa dưới, và mã HTTP khi nó chết trước đó (404/403/429/503) — hai loại hỏng khác hẳn nhau không được gộp vào 'unknown'.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 30},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 30
+      },
       "targets": [
-        {"refId": "A", "legendFormat": "{{outcome}}", "expr": "sum by (outcome) (rate(rag_chat_turns_total[$__rate_interval])) * 60"}
+        {
+          "refId": "A",
+          "legendFormat": "{{outcome}}",
+          "expr": "sum by (outcome) (rate(rag_chat_turns_total[$__rate_interval])) * 60"
+        }
       ],
-      "fieldConfig": {"defaults": {"custom": {"drawStyle": "bars", "stacking": {"mode": "normal"}, "fillOpacity": 70}}, "overrides": []}
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 70
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "type": "row",
       "title": "Tiền",
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 37},
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 37
+      },
       "collapsed": false,
       "panels": []
     },
     {
       "type": "stat",
       "title": "USD / giờ",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 38},
-      "targets": [{"refId": "A", "expr": "sum(rate(rag_llm_cost_usd_total[$__rate_interval])) * 3600"}],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "graphMode": "area"},
-      "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 4}, "overrides": []}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 38
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(rag_llm_cost_usd_total[$__rate_interval])) * 3600"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4
+        },
+        "overrides": []
+      }
     },
     {
       "type": "stat",
       "title": "USD / câu hỏi",
       "description": "Ngân sách của bảng mục tiêu là ≤ $0,005. W5-06 đo $0,001299 trên một câu thật.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 38},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 38
+      },
       "targets": [
         {
           "refId": "A",
           "expr": "sum(rate(rag_llm_cost_usd_total[$__rate_interval])) / clamp_min(sum(rate(rag_chat_turns_total[$__rate_interval])), 0.0001)"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background"
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "currencyUSD",
           "decimals": 5,
-          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 0.005}]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.005
+              }
+            ]
+          }
         },
         "overrides": []
       }
@@ -342,69 +834,251 @@
       "type": "stat",
       "title": "Bước gọi model KHÔNG định giá được",
       "description": "Mẫu số của mọi ô tiền ở đây. `rewrite` quá hạn vẫn bị nhà cung cấp tính tiền (wait_for huỷ cái CHỜ, không huỷ cái THREAD) — chi phí thật là 'chưa biết', và cộng 0 cho nó biến một khoản chi không quan sát được thành một khoản chi bằng không. Ô này khác 0 ⇒ mọi tổng ở trên là CẬN DƯỚI.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 38},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 38
+      },
       "targets": [
-        {"refId": "A", "legendFormat": "{{step}}", "expr": "sum by (step) (increase(rag_llm_unpriced_steps_total[$__range]))"}
+        {
+          "refId": "A",
+          "legendFormat": "{{step}}",
+          "expr": "sum by (step) (increase(rag_llm_unpriced_steps_total[$__range]))"
+        }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "textMode": "value_and_name"},
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "textMode": "value_and_name"
+      },
       "fieldConfig": {
-        "defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]}},
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
         "overrides": []
       }
     },
     {
       "type": "stat",
       "title": "Token / giây",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 38},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 38
+      },
       "targets": [
-        {"refId": "A", "legendFormat": "{{direction}}", "expr": "sum by (direction) (rate(rag_llm_tokens_total[$__rate_interval]))"}
+        {
+          "refId": "A",
+          "legendFormat": "{{direction}}",
+          "expr": "sum by (direction) (rate(rag_llm_tokens_total[$__rate_interval]))"
+        }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "textMode": "value_and_name"},
-      "fieldConfig": {"defaults": {"decimals": 1}, "overrides": []}
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1
+        },
+        "overrides": []
+      }
     },
     {
       "type": "timeseries",
       "title": "USD / giờ theo model và bước",
       "description": "Tách theo bước vì `rewrite` và `completion` có hai hồ sơ chi phí khác hẳn nhau, và W5-11 sẽ đổi model của một trong hai.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 7, "w": 24, "x": 0, "y": 43},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
       "targets": [
-        {"refId": "A", "legendFormat": "{{model}} · {{step}}", "expr": "sum by (model, step) (rate(rag_llm_cost_usd_total[$__rate_interval])) * 3600"}
+        {
+          "refId": "A",
+          "legendFormat": "{{model}} · {{step}}",
+          "expr": "sum by (model, step) (rate(rag_llm_cost_usd_total[$__rate_interval])) * 3600"
+        }
       ],
       "fieldConfig": {
-        "defaults": {"unit": "currencyUSD", "custom": {"drawStyle": "line", "stacking": {"mode": "normal"}, "fillOpacity": 30}},
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "drawStyle": "line",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 30
+          }
+        },
         "overrides": []
       }
     },
     {
       "type": "row",
       "title": "Sức khoẻ của chính lớp quan sát",
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 50},
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 50
+      },
       "collapsed": false,
       "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Worker mà bảng này đại diện",
+      "description": "TD-75. prometheus_client giữ số đo trong bộ nhớ của MỘT tiến trình. >1 nghĩa là scraper chỉ hỏi trúng một worker và MỌI con số trong bảng đang bị chia — sai theo hướng có lợi, nên phải nói ra. Đọc WEB_CONCURRENCY, cùng biến mà uvicorn dùng.",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 51
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(rag_scrape_workers)",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "rag-prom"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      }
     },
     {
       "type": "timeseries",
       "title": "Hàng đợi đẩy trace sang Langfuse",
       "description": "`dropped` là con số quan trọng nhất ở đây: trace bị vứt khi hàng đợi đầy, và hàng đợi đầy đúng lúc hệ thống bận — nên `dropped` lớn nghĩa là Langfuse đang thiếu ĐÚNG những lượt đáng xem nhất. Metric thì không mất, vì MetricsSink đứng trước hàng đợi.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 51},
-      "targets": [{"refId": "A", "legendFormat": "{{state}}", "expr": "rag_trace_sink"}],
-      "fieldConfig": {"defaults": {"custom": {"drawStyle": "line", "lineWidth": 2}}, "overrides": []}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 51
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{state}}",
+          "expr": "rag_trace_sink"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "type": "timeseries",
       "title": "Trace đã đóng / phút",
       "description": "Phải bám sát `rag_chat_turns_total`. Lệch nhau nghĩa là có lượt kết thúc mà không đóng trace — tức có một đường thoát không ai biết.",
-      "datasource": {"type": "prometheus", "uid": "rag-prom"},
-      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 51},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 51
+      },
       "targets": [
-        {"refId": "A", "legendFormat": "trace", "expr": "sum(rate(rag_traces_finished_total[$__rate_interval])) * 60"},
-        {"refId": "B", "legendFormat": "lượt chat", "expr": "sum(rate(rag_chat_turns_total[$__rate_interval])) * 60"}
+        {
+          "refId": "A",
+          "legendFormat": "trace",
+          "expr": "sum(rate(rag_traces_finished_total[$__rate_interval])) * 60"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "lượt chat",
+          "expr": "sum(rate(rag_chat_turns_total[$__rate_interval])) * 60"
+        }
       ],
-      "fieldConfig": {"defaults": {"custom": {"drawStyle": "line", "lineWidth": 2}}, "overrides": []}
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      }
     }
   ]
 }

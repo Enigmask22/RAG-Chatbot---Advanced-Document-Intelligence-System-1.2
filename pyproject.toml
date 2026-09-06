@@ -88,6 +88,13 @@ dev = [
 data = [
     "dvc>=3.55",
 ]
+# `W6-05`. Locust kéo theo flask + gevent + geventhttpclient — cả một web stack
+# chỉ để phát tải. Không nằm trong `dev`: CI chạy unit test không cần nó, và
+# gevent vá monkey-patch thư viện chuẩn, thứ không nên có mặt trong cùng môi
+# trường với `pytest-asyncio`.
+loadtest = [
+    "locust>=2.31",
+]
 # MLflow chỉ dùng ở **pipeline plane** (theo dõi thí nghiệm offline). Để nó ngoài
 # `pipeline` extra vì nó kéo theo cả một web stack (flask, alembic, sqlalchemy,
 # gunicorn/waitress) chỉ để phục vụ UI — CI chạy unit test không cần thứ đó, và
@@ -168,7 +175,7 @@ strict = true
 warn_unreachable = true
 # Thư viện bên thứ ba chưa có type stub — không để chúng làm hỏng strict mode của code mình
 [[tool.mypy.overrides]]
-module = ["sentence_transformers.*", "qdrant_client.*", "torch.*", "pypdfium2.*"]
+module = ["sentence_transformers.*", "qdrant_client.*", "torch.*", "pypdfium2.*", "locust.*"]
 ignore_missing_imports = true
 
 # --------------------------------------------------------------------------

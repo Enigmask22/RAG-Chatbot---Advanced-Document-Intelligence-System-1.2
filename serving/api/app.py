@@ -415,6 +415,7 @@ def create_app(
 
     registry = BundleRegistry(
         root=resolved.bundle_root,
+        warmup=resolved.bundle_warmup,
         build_runtime=_traced_runtime(
             build_runtime
             or QdrantRuntimeBuilder(

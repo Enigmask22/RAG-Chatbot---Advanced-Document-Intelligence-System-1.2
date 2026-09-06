@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -62,6 +63,7 @@ from rag_core.reranking.base import Reranker
 from rag_core.retrieval.base import Retriever
 
 __all__ = [
+    "WARMUP_QUERY",
     "ActiveBundle",
     "BundleRegistry",
     "NoBundleLoadedError",
@@ -121,12 +123,19 @@ class ActiveBundle:
         return self.bundle.bundle_version
 
 
+#: Truy vấn dùng để làm nóng. Ngắn, không dấu chấm hỏi, không khớp gì đặc biệt —
+#: nó chỉ cần đi hết đường embed → Qdrant → rerank một lần.
+WARMUP_QUERY = "khoi dong"
+
+
 @dataclass
 class BundleRegistry:
     """Giữ bundle đang phục vụ, đổi được lúc chạy, lùi lại được một bước."""
 
     root: Path
     build_runtime: RuntimeBuilder
+    warmup: bool = True
+    """Chạy một lượt truy hồi giả ngay sau khi dựng runtime. Xem `_warm`."""
     _active: ActiveBundle | None = field(default=None, init=False, repr=False)
     _previous: ActiveBundle | None = field(default=None, init=False, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
@@ -179,6 +188,8 @@ class BundleRegistry:
             bundle = load_bundle(self.root / f"rag-bundle-v{version}")
             # ⚠️ Mọi thứ có thể hỏng phải xảy ra TRƯỚC dòng gán bên dưới.
             retriever, reranker = self.build_runtime(bundle)
+            if self.warmup:
+                self._warm(retriever, version)
             snapshot = ActiveBundle(
                 bundle=bundle,
                 retriever=retriever,
@@ -186,6 +197,53 @@ class BundleRegistry:
                 loaded_at=datetime.now(UTC),
             )
             return self._swap(snapshot)
+
+    def _warm(self, retriever: Retriever, version: str) -> None:
+        """Một lượt truy hồi giả trước khi bundle được công bố. `TD-72`.
+
+        ## ⭐⭐ Chỗ đúng là `activate`, không phải `lifespan`
+
+        `W5-06` phát hiện rerank lạnh tốn 10,7× rerank nóng, và `W6-05` đo lại
+        trên hệ đang phục vụ: request đầu **13.386 ms** so với 4.272 ms
+        (+9,1 s, 3,1×), TTFT **10.469 ms** so với 1.389 ms (7,5×). Toàn bộ phần
+        phạt nằm ở `prepare` (9.620 ms so với 740 ms) — trọng số đã nạp lúc
+        `build_runtime`, nhưng kernel CUDA chỉ khởi tạo ở `score()` đầu tiên.
+
+        Phản xạ đầu là làm nóng trong `lifespan`. Nhưng chế độ hỏng không thuộc
+        về *khởi động*, nó thuộc về **kích hoạt**: `POST /admin/bundle/reload`
+        dựng một runtime mới với trọng số mới, và người dùng ngay sau lệnh
+        reload nhận đúng 13 giây ấy — không có deploy nào để đổ lỗi. Đặt ở đây
+        thì cả hai đường đi qua cùng một lượt làm nóng.
+
+        Và nó tự động khiến `/ready` đúng: startup gọi `activate()` bên trong
+        `lifespan`, mà uvicorn chưa mở cổng cho tới khi `lifespan` xong.
+
+        ## ⭐ Làm nóng hỏng thì **không** được chặn kích hoạt
+
+        Qdrant chưa lên khi container khởi động là chuyện thường. Một bản vá
+        latency mà biến sự cố tạm thời của phụ thuộc thành "không deploy được"
+        đã đổi một vấn đề nhỏ lấy một vấn đề lớn hơn. Hỏng ⇒ ghi log, đi tiếp,
+        và request đầu tiên trả giá đúng như trước khi có bản vá này.
+
+        ⚠️ Cái giá: thời gian khởi động dài thêm đúng một lượt truy hồi lạnh
+        (~9 s trên máy đo). Đó là đánh đổi có chủ đích — nó chuyển 9 giây từ
+        *người dùng đầu tiên* sang *quy trình deploy*, nơi không có ai đang đợi.
+        `warmup=False` tắt được cho môi trường mà thời gian lên là ràng buộc.
+        """
+        started = time.perf_counter()
+        try:
+            retriever.retrieve(WARMUP_QUERY, top_k=1)
+        except Exception:
+            logger.warning(
+                "làm nóng bundle %s thất bại — kích hoạt vẫn tiếp tục, "
+                "request đầu tiên sẽ trả giá khởi tạo kernel (TD-72)",
+                version,
+                exc_info=True,
+            )
+            return
+        logger.info(
+            "làm nóng bundle %s xong sau %.0f ms", version, (time.perf_counter() - started) * 1000.0
+        )
 
     def rollback(self) -> ActiveBundle:
         """Quay về bản trước. Không dựng lại gì, nên không hỏng được.

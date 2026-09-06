@@ -1,0 +1,147 @@
+{
+  "label": "w605-sweep-deepseek",
+  "host": "http://127.0.0.1:8000",
+  "duration_s": 60,
+  "levels": [
+    {
+      "users": 1,
+      "requests": 9,
+      "failures": 0,
+      "rps": 0.1664137100921877,
+      "total_p50": 4300.0,
+      "total_p95": 4300.0,
+      "total_p99": 4300.0,
+      "ttft_p50": 1400.0,
+      "ttft_p95": 1400.0,
+      "ttft_p99": 1400.0,
+      "provider_calls": 10,
+      "stub_peak": 1,
+      "stages": {
+        "citations": 9.5,
+        "completion": 4916.7,
+        "prompt": 9.5,
+        "rerank": 975.0,
+        "retrieval": 975.0,
+        "retrieve.hybrid": 93.8,
+        "understand": 9.5
+      }
+    },
+    {
+      "users": 2,
+      "requests": 18,
+      "failures": 0,
+      "rps": 0.3298181953274791,
+      "total_p50": 4300.0,
+      "total_p95": 5100.0,
+      "total_p99": 5100.0,
+      "ttft_p50": 1400.0,
+      "ttft_p95": 2200.0,
+      "ttft_p99": 2200.0,
+      "provider_calls": 20,
+      "stub_peak": 2,
+      "stages": {
+        "citations": 9.5,
+        "completion": 4916.7,
+        "prompt": 9.5,
+        "rerank": 1000.0,
+        "retrieval": 1000.0,
+        "retrieve.hybrid": 200.0,
+        "understand": 9.5
+      }
+    },
+    {
+      "users": 4,
+      "requests": 36,
+      "failures": 0,
+      "rps": 0.6143099981860568,
+      "total_p50": 4300.0,
+      "total_p95": 5700.0,
+      "total_p99": 6300.0,
+      "ttft_p50": 1400.0,
+      "ttft_p95": 2800.0,
+      "ttft_p99": 3400.0,
+      "provider_calls": 38,
+      "stub_peak": 4,
+      "stages": {
+        "citations": 9.5,
+        "completion": 4920.8,
+        "prompt": 9.5,
+        "rerank": 1820.0,
+        "retrieval": 2075.0,
+        "retrieve.hybrid": 471.9,
+        "understand": 9.5
+      }
+    },
+    {
+      "users": 8,
+      "requests": 67,
+      "failures": 0,
+      "rps": 1.1479489739395852,
+      "total_p50": 4800.0,
+      "total_p95": 7200.0,
+      "total_p99": 9300.0,
+      "ttft_p50": 1900.0,
+      "ttft_p95": 4300.0,
+      "ttft_p99": 6400.0,
+      "provider_calls": 72,
+      "stub_peak": 6,
+      "stages": {
+        "citations": 9.5,
+        "completion": 4905.3,
+        "prompt": 9.5,
+        "rerank": 3020.0,
+        "retrieval": 3800.0,
+        "retrieve.hybrid": 840.0,
+        "understand": 9.5
+      }
+    },
+    {
+      "users": 16,
+      "requests": 78,
+      "failures": 0,
+      "rps": 1.3193792881926423,
+      "total_p50": 9500.0,
+      "total_p95": 13000.0,
+      "total_p99": 15000.0,
+      "ttft_p50": 6600.0,
+      "ttft_p95": 10000.0,
+      "ttft_p99": 12000.0,
+      "provider_calls": 83,
+      "stub_peak": 6,
+      "stages": {
+        "citations": 9.5,
+        "completion": 4886.8,
+        "prompt": 9.5,
+        "rerank": 7457.1,
+        "retrieval": 9041.7,
+        "retrieve.hybrid": 2462.5,
+        "understand": 9.5
+      }
+    },
+    {
+      "users": 32,
+      "requests": 78,
+      "failures": 0,
+      "rps": 1.3259313221149762,
+      "total_p50": 20000.0,
+      "total_p95": 24000.0,
+      "total_p99": 27000.0,
+      "ttft_p50": 18000.0,
+      "ttft_p95": 21000.0,
+      "ttft_p99": 24000.0,
+      "provider_calls": 84,
+      "stub_peak": 6,
+      "stages": {
+        "citations": 9.5,
+        "completion": 4853.5,
+        "prompt": 9.5,
+        "rerank": 19363.6,
+        "retrieval": 19408.5,
+        "retrieve.hybrid": 3063.6,
+        "understand": 9.5
+      }
+    }
+  ],
+  "knee_users": 32,
+  "peak_rps": 1.3259313221149762
+}
