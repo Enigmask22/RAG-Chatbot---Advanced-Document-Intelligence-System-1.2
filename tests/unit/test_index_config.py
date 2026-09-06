@@ -236,3 +236,69 @@ class TestTenant:
         assert len(configs) >= 8, f"chỉ thấy {len(configs)} config — glob hỏng?"
         for path in configs:
             assert load_index_config(path).tenant_id
+
+
+# ---------------------------------------------------------------------------
+# `TD-82` — vân tay cũ vẫn đọc được, và state được nâng lên tại chỗ
+# ---------------------------------------------------------------------------
+
+
+class _CountingRetriever:
+    """Đủ để `_reconcile_state` làm việc: nó chỉ hỏi `count()`."""
+
+    def __init__(self, count: int) -> None:
+        self._count = count
+
+    def count(self) -> int:
+        return self._count
+
+
+def _state_for(config: IndexConfig, fingerprint: str) -> object:
+    from pipeline.indexing.build_index import DocState, IndexState
+
+    return IndexState(
+        config_name=config.name,
+        fingerprint=fingerprint,
+        collection=config.collection_name,
+        embedding_model=config.embedding_model,
+        embedding_dim=1024,
+        chunker_name="hybrid",
+        documents={"doc": DocState(content_hash="a" * 64, n_chunks=3)},
+    )
+
+
+def _reconcile(config: IndexConfig, fingerprint: str) -> object:
+    from pipeline.indexing.build_index import _reconcile_state
+
+    return _reconcile_state(
+        _state_for(config, fingerprint),  # type: ignore[arg-type]
+        config,
+        _CountingRetriever(3),  # type: ignore[arg-type]
+        embedding_dim=1024,
+        chunker_name="hybrid",
+        allow_mixed=False,
+    )
+
+
+def test_a_pre_td82_state_file_is_accepted_and_upgraded() -> None:
+    """⭐⭐ Bản vá `TD-82` không được biến một index hợp lệ thành index bị từ chối.
+
+    State file của collection đang nằm trong Qdrant được ghi trên Windows bằng
+    công thức cũ. Sau khi sửa công thức, `state.fingerprint != config.fingerprint`
+    — và luật "hai fingerprint trong một collection thì dừng" sẽ chặn lần build
+    kế tiếp, dù index ấy **đúng** là do config này sinh ra.
+
+    Chấp nhận thôi chưa đủ: state phải được **nâng lên** giá trị mới, nếu không
+    thì dòng cảnh báo ấy vĩnh viễn và giá trị cũ không bao giờ biến mất.
+    """
+    config = load_index_config(Path("configs/indexing/bgem3-contextual.yaml"))
+    reconciled = _reconcile(config, config.legacy_windows_fingerprint)
+    assert reconciled.fingerprint == config.fingerprint  # type: ignore[attr-defined]
+    assert reconciled.documents  # type: ignore[attr-defined]  # state cũ được giữ, không bị vứt
+
+
+def test_a_genuinely_different_config_still_stops_the_build() -> None:
+    """Nới lỏng phải hẹp: chỉ nhận đúng biến thể đường dẫn, không nhận mọi thứ."""
+    config = load_index_config(Path("configs/indexing/bgem3-contextual.yaml"))
+    with pytest.raises(RuntimeError, match="fingerprint"):
+        _reconcile(config, "0" * 64)

@@ -25,16 +25,21 @@ from .schema import (
 from .store import (
     BUNDLE_DIR_PREFIX,
     MANIFEST_NAME,
+    POINTER_NAME,
     bundle_dir_name,
+    current_bundle,
     latest_bundle,
     list_bundles,
     load_bundle,
+    read_pointer,
     save_bundle,
+    write_pointer,
 )
 
 __all__ = [
     "BUNDLE_DIR_PREFIX",
     "MANIFEST_NAME",
+    "POINTER_NAME",
     "BundleChecksumError",
     "BundleComponents",
     "BundleValidationError",
@@ -53,9 +58,12 @@ __all__ = [
     "bundle_dir_name",
     "canonical_blob",
     "compute_checksum",
+    "current_bundle",
     "latest_bundle",
     "list_bundles",
     "load_bundle",
     "parse_semver",
+    "read_pointer",
     "save_bundle",
+    "write_pointer",
 ]

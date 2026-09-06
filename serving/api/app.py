@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 
-from rag_core.bundle import latest_bundle
+from rag_core.bundle import POINTER_NAME, latest_bundle, read_pointer
 from rag_core.generation import default_registry
 from rag_core.llm import (
     DEFAULT_DEEPSEEK_MODEL,
@@ -73,15 +73,28 @@ logger = logging.getLogger(__name__)
 
 
 def _startup_version(settings: Settings) -> str | None:
-    """Bundle nào được kích hoạt lúc khởi động.
+    """Bundle nào được kích hoạt lúc khởi động. Ba tầng, giảm dần độ tường minh.
 
-    `BUNDLE_VERSION` ghim tường minh thắng. Không ghim thì lấy bản semver cao
-    nhất — tiện cho môi trường dev, và ⚠️ **sai cho production**: nó biến một
-    lần `save_bundle` vô ý thành một lần deploy, và nó xoá kết quả của mọi lần
-    rollback ở lần restart kế tiếp (xem `Settings.bundle_version`).
+    1. `BUNDLE_VERSION` — người vận hành ghim tay, thắng tất cả.
+    2. `bundles/CURRENT` — con trỏ phát hành (`W5-10`). Đây là đường mà
+       production đi: promote ghi vào nó, rollback ghi ngược lại nó, và cả hai
+       lần ghi ấy là commit đọc được.
+    3. Bản semver cao nhất — ⚠️ **đoán**, và nó đoán sai theo đúng ba cách đã
+       ghi ở docstring của `POINTER_NAME`. Giữ lại vì test và môi trường dev
+       chưa có con trỏ, nhưng nó phải **nói ra là mình đang đoán**: một hệ
+       thống chọn bundle bằng suy luận mà không để lại dòng log nào là một hệ
+       thống không ai trả lời được câu "vì sao nó đang chạy bản này".
     """
     if settings.bundle_version is not None:
         return settings.bundle_version
+    try:
+        pointed = read_pointer(settings.bundle_root)
+    except Exception:
+        logger.exception("con trỏ %s hỏng", settings.bundle_root / POINTER_NAME)
+        pointed = None
+    if pointed is not None:
+        logger.info("bundle theo con trỏ %s: %s", POINTER_NAME, pointed)
+        return pointed
     try:
         newest = latest_bundle(settings.bundle_root)
     except Exception:
@@ -89,7 +102,17 @@ def _startup_version(settings: Settings) -> str | None:
         # `/ready` 503 kèm lý do vẫn gỡ được, một crashloop thì không.
         logger.exception("không quét được %s", settings.bundle_root)
         return None
-    return newest.bundle_version if newest is not None else None
+    if newest is None:
+        return None
+    logger.warning(
+        "không có con trỏ %s trong %s — chọn bản semver cao nhất (%s) bằng SUY LUẬN. "
+        "Trên production hãy ghim `BUNDLE_VERSION` hoặc tạo con trỏ, nếu không thì "
+        "một lần đúc bundle thử nghiệm là một lần deploy.",
+        POINTER_NAME,
+        settings.bundle_root,
+        newest.bundle_version,
+    )
+    return newest.bundle_version
 
 
 def _qdrant_check(registry: BundleRegistry) -> Check:

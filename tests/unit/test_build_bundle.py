@@ -11,7 +11,6 @@ nguồn (config, báo cáo build, lượt eval) **không nói về cùng một i
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -236,7 +235,7 @@ def test_the_sample_bundle_matches_the_real_chunking_config() -> None:
 
     Dùng `chunking_fingerprint` vì nó **không** băm đường dẫn nào, tức nó giống
     nhau trên mọi hệ điều hành. Vế `fingerprint` tách xuống bài dưới — xem
-    `TD-82`.
+    `TD-82`, đã trả ở `W5-10`.
     """
     if not SAMPLE.is_file():  # pragma: no cover
         pytest.skip("chưa sinh bundle mẫu")
@@ -246,55 +245,94 @@ def test_the_sample_bundle_matches_the_real_chunking_config() -> None:
     )
 
 
-@pytest.mark.skipif(
-    os.name != "nt",
-    reason=(
-        "TD-82: `IndexConfig.fingerprint` băm cả `contexts_path`, và `Path` "
-        r"serialise ra `\` trên Windows / `/` trên POSIX — cùng một config cho "
-        "HAI vân tay. Bundle đã commit mang giá trị của Windows."
-    ),
-)
 def test_the_sample_bundle_matches_the_real_index_config() -> None:
+    """`TD-82` đã trả: bài này chạy trên **mọi** hệ điều hành, không còn skip.
+
+    Trước `W5-10` nó bị `skipif(os.name != "nt")` vì manifest đã commit mang vân
+    tay tính trên Windows, còn `fingerprint` tính trên Linux ra giá trị khác —
+    tức nửa số máy chạy CI không kiểm được gì ở đây. Giờ `fingerprint_status`
+    tính lại được **cả hai** công thức trên cả hai nền tảng, nên phép kiểm là
+    một câu về bundle chứ không còn là một câu về máy đang chạy nó.
+
+    Kết quả mong đợi là `"legacy"`, không phải `"current"`: ba manifest đã ký
+    vẫn giữ nguyên giá trị chúng được ký cùng. Xem
+    `test_the_committed_manifests_are_not_rewritten_by_the_fix`.
+    """
     if not SAMPLE.is_file():  # pragma: no cover
         pytest.skip("chưa sinh bundle mẫu")
     raw = json.loads(SAMPLE.read_text(encoding="utf-8"))
-    assert raw["components"]["index"]["fingerprint"] == _real_config().fingerprint
+    recorded = raw["components"]["index"]["fingerprint"]
+    assert _real_config().fingerprint_status(recorded) in {"current", "legacy"}
 
 
-def test_the_index_fingerprint_is_still_path_separator_dependent() -> None:
-    """⚠️ Ghim **món nợ**, không ghim hành vi đúng — `TD-82`.
+def test_the_index_fingerprint_no_longer_carries_the_shape_of_the_host_os() -> None:
+    """`TD-82` — quét **payload** đi vào hàm băm, không quét mã.
 
-    ## Vì sao một lỗi lại được khoá bằng test thay vì sửa ngay
+    Bài cũ ghim món nợ bằng cách đọc `inspect.getsource(fingerprint)` và đòi
+    thấy chữ `contextual`. Nó đỏ đúng ngày ai đó sửa, đúng như thiết kế — nhưng
+    nó không gác được gì sau đó, và nhất là nó mù với **trường path tiếp theo**
+    lọt vào payload.
 
-    `fingerprint` là trường chứng minh *"index này được build bằng đúng config
-    này"*, và `W4-02`/`TD-38` dựng phép kiểm `runtime_drift` lên trên nó. Sửa
-    nó **đổi giá trị**, tức ba manifest đã commit (`0.1.0`, `0.2.0`, `0.2.1`)
-    cộng `index_fingerprint` nằm trong các artifact eval đã lưu đều thành sai —
-    một lần đúc lại bundle, không phải một dòng diff.
-
-    Nên hôm nay nó là nợ có tên, và bài này đỏ vào **đúng ngày ai đó sửa**.
-
-    ## Vì sao không so hai fingerprint với nhau
-
-    Cách hiển nhiên — dựng một config thứ hai với đường dẫn viết bằng `/` rồi
-    đòi hai fingerprint khác nhau — **không chạy được**: `Path("a/b")` và
-    `Path("a\b")` là cùng một object trên Windows. Khác biệt chỉ tồn tại
-    *giữa hai hệ điều hành*, nên bài test phải ghim đúng hai mắt xích tạo ra
-    nó: đường dẫn serialise theo nền tảng, và chuỗi ấy đi thẳng vào hàm băm.
+    Bài này quét mọi giá trị chuỗi trong payload và từ chối dấu `\\`. Thêm một
+    `Path` vào `fingerprint` mà quên chuẩn hoá ⇒ đỏ trên Windows, và đỏ **trước
+    khi** artifact nào kịp mang giá trị lệch nền tảng.
     """
-    import inspect
+    payload = _real_config()._fingerprint_payload()
 
+    def strings(node: object) -> list[str]:
+        if isinstance(node, str):
+            return [node]
+        if isinstance(node, dict):
+            return [s for value in node.values() for s in strings(value)]
+        if isinstance(node, list):
+            return [s for item in node for s in strings(item)]
+        return []
+
+    offenders = [s for s in strings(payload) if "\\" in s]
+    assert not offenders, (
+        f"payload của `fingerprint` mang dấu phân cách của Windows: {offenders} — "
+        "một trường path chưa được chuẩn hoá về POSIX sẽ cho HAI vân tay cho "
+        "cùng một config (TD-82)"
+    )
+
+
+def test_the_two_fingerprint_formulas_really_are_different() -> None:
+    """Nếu hai công thức trùng nhau thì `fingerprint_status` không chứng minh gì.
+
+    `legacy_windows_fingerprint` dùng `PureWindowsPath`, thứ viết dấu `\\` trên
+    **cả** Windows lẫn Linux — đó là lý do phép so sánh này chạy được ở cả hai
+    nơi, và cũng là lý do bản vá không cần một máy Windows để kiểm.
+    """
     config = _real_config()
-    blob = config.contextual.model_dump_json()
-    assert ("\\\\" in blob) == (os.name == "nt"), (
-        f"`contexts_path` serialise ra {blob!r} — nếu nó đã được chuẩn hoá thì "
-        "TD-82 vừa được sửa: đúc lại ba manifest bundle rồi xoá bài test này"
-    )
-    source = inspect.getsource(type(config).fingerprint.fget)
-    assert "contextual" in source, (
-        "`fingerprint` thôi băm `contextual` — TD-82 có thể đã được sửa theo "
-        "hướng khác; kiểm lại ba manifest bundle"
-    )
+    assert config.fingerprint != config.legacy_windows_fingerprint
+    assert config.fingerprint_status(config.legacy_windows_fingerprint) == "legacy"
+    assert config.fingerprint_status(config.fingerprint) == "current"
+    assert config.fingerprint_status("0" * 64) == "mismatch"
+
+
+@pytest.mark.parametrize("version", ["0.1.0", "0.2.0", "0.2.1"])
+def test_the_committed_manifests_are_not_rewritten_by_the_fix(version: str) -> None:
+    """⭐⭐ Bản vá **không** sửa ba manifest đã ký, và đó là một lựa chọn.
+
+    Ghi chú gốc của `TD-82` dự tính "đúc lại ba manifest". Không làm, vì
+    `save_bundle` có đúng một luật số 1: *không ghi đè một version đã tồn tại* —
+    "bundle bất biến" là một câu về hệ thống file. Sửa một trường bên trong một
+    artifact **đã ký** để nó khớp với mã hôm nay là biến chữ ký thành trang trí.
+
+    Cái được sửa là **công thức** và **phép so sánh**. Vân tay cũ vẫn đọc được,
+    vẫn nhận diện được là cũ, và bundle kế tiếp được đúc từ một lần build index
+    thật sẽ mang giá trị mới. Bài này đỏ nếu ai đó chọn con đường kia.
+    """
+    manifest = Path(f"bundles/rag-bundle-v{version}/manifest.json")
+    if not manifest.is_file():  # pragma: no cover
+        pytest.skip(f"chưa có bundle {version}")
+    raw = json.loads(manifest.read_text(encoding="utf-8"))
+    recorded = raw["components"]["index"]["fingerprint"]
+    assert len(recorded) == 64
+    # Không đòi `== legacy_windows_fingerprint`: `0.1.0` dùng config khác
+    # (`bkai`, không contextual), nên nó không so được với `_real_config()`.
+    # Đòi vừa đủ: giá trị nguyên vẹn, không bị bản vá viết đè.
+    assert raw["checksum"], "manifest phải còn chữ ký"
 
 
 # ---------------------------------------------------------------------------

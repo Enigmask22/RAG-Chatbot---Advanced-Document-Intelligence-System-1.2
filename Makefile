@@ -184,6 +184,19 @@ gate:  ## `W5-05`: gate phát hành cho một bundle (BUNDLE=0.2.1). Exit 1=FAIL
 		--html plans/reports/runs/gate-$(BUNDLE).html \
 		--json plans/reports/runs/gate-$(BUNDLE).json
 
+.PHONY: nightly
+nightly:  ## `W5-10`: gate ứng viên → đề nghị phát hành. Exit 1=FAIL, 2=INCOMPARABLE, 3=promote hỏng
+	$(PY) python -m pipeline.eval.nightly --out-dir plans/reports/runs $(NIGHTLY_ARGS)
+
+.PHONY: nightly-dry
+nightly-dry:  ## Như `nightly` nhưng KHÔNG đúc bundle và KHÔNG dời con trỏ
+	$(PY) python -m pipeline.eval.nightly --out-dir plans/reports/runs --no-promote
+
+BUNDLE_ROLLBACK ?=
+.PHONY: bundle-rollback
+bundle-rollback:  ## `W5-10`: dời con trỏ CURRENT về một bản cũ (BUNDLE_ROLLBACK=0.2.0)
+	$(PY) python -c "from pathlib import Path; from pipeline.bundle.promote import rollback; 		print(rollback(Path('bundles'), '$(BUNDLE_ROLLBACK)'))"
+
 .PHONY: smoke-eval
 smoke-eval:  ## `W5-09`: smoke eval truy hồi trên index đóng băng (không model, $$0)
 	$(PY) python -m pipeline.eval.smoke

@@ -4,7 +4,15 @@
 > file này cho biết **đang làm dở tới đâu** và **lệnh nào để tiếp tục**.
 > Trạng thái chính thức của từng task vẫn nằm ở [`CHECKLIST.md`](CHECKLIST.md).
 >
-> **Phiên mới nhất: 2026-09-05 (14) (cuối file)** — `W5-07` xong, **`W5` 7/11**. Bảng **RAG Health** (28 panel) chạy thật; mỗi ô đọc lại bằng chính PromQL của nó. ⭐⭐ **Bảng trực tuyến không đo được thứ eval đo**: `W5-02` chấm từ chối bằng nhãn judge, bảng phải dùng từ khoá — nên ô ấy tên `refusals_suspected` và `HELP` tự khai là ước lượng. ⭐⭐ **Rồi đo luôn xem nó chệch bao nhiêu ($0)**: đối chiếu 242 nhãn judge — bản đầu **F1 0,721, lệch −24,5%** (bảng làm hệ thống trông *tốt hơn* thực tế), nguyên nhân lớn nhất là **một chữ**; sau khi bổ sung, đo trên nửa **giữ ngoài**: **F1 0,889, lệch +4,5%**. ⭐⭐ **Bảng và trace đọc cùng một phép đo** — xác nhận độc lập rerank chiếm **93,6%** truy hồi (vs 92,8% của `W5-06`). ⭐⭐ **Metric có nhãn không tồn tại cho tới lần quan sát đầu**, nên *"No data"* mang hai nghĩa. ⭐⭐ Lỗi thật từ một phép tiêm **sống sót**: câu trả lời từ cache không bao giờ được quét từ chối. Bảng nói **55,6% lượt vượt ngân sách 3,5 s** và **$0,0016828/câu** (số đo cost/query đầu tiên). Tiêm 22/22 đỏ. 3 nợ mới `TD-75`…`TD-77`.
+> **Phiên mới nhất: 2026-09-06 (18) (cuối file)** — `W5-10` xong, **`W5` 10/11**. Đường phát hành tự động: con trỏ `bundles/CURRENT` + `promote()` đúc bản patch mang `gate.status=PASS` + job đêm gate→đề nghị PR. Lần chạy thật là một lần **từ chối** (`INCOMPARABLE`, exit 2); nhánh PASS diễn tập trên bản sao đĩa thật. Gộp `TD-71` ✅ + `AU-12` ✅ + `TD-82` 🟡. Tiêm 23/23 đỏ — hai phép sống sót ở lượt một đều là **lỗ trong test**. Nợ mới `TD-85`.
+>
+> Phiên trước: **2026-09-05 (17)** — audit toàn cục + `NEW-08`, **10 vá**. 21 phát hiện `AU-01`…`AU-21` từ ba lượt review độc lập; `TD-64` **đóng** bằng cách sửa PHÉP ĐO (citation 0,8308 → **0,8662 ✅**). Món thứ 10 do chính **probe** tìm ra chứ không phải test: `isinstance` trên class trần fail lặng lẽ vì production bọc chuỗi bằng `TracedRetriever`.
+>
+> Phiên trước: **2026-09-05 (16)** — `W5-09` xong, **`W5` 9/11**, `G5` ✅ 4/4. CI bốn tầng + smoke truy hồi trên index đóng băng ($0, tất định, chạy được cho fork). Lượt CI đầu tìm ra **4 lỗi chỉ tồn tại trên Linux**.
+>
+> Phiên trước: **2026-09-05 (15)** — `W5-08` xong, **`W5` 8/11**. Vòng phản hồi 👍/👎 → Postgres → điểm Langfuse → ứng viên golden set. ⭐⭐ Khoá nối **không được đến từ người gọi**; cột `citations` của `0001` chưa bao giờ chứa citations (`TD-50` đóng).
+>
+> Phiên trước: **2026-09-05 (14)** — `W5-07` xong, **`W5` 7/11**. Bảng **RAG Health** (28 panel) chạy thật; mỗi ô đọc lại bằng chính PromQL của nó. ⭐⭐ **Bảng trực tuyến không đo được thứ eval đo**: `W5-02` chấm từ chối bằng nhãn judge, bảng phải dùng từ khoá — nên ô ấy tên `refusals_suspected` và `HELP` tự khai là ước lượng. ⭐⭐ **Rồi đo luôn xem nó chệch bao nhiêu ($0)**: đối chiếu 242 nhãn judge — bản đầu **F1 0,721, lệch −24,5%** (bảng làm hệ thống trông *tốt hơn* thực tế), nguyên nhân lớn nhất là **một chữ**; sau khi bổ sung, đo trên nửa **giữ ngoài**: **F1 0,889, lệch +4,5%**. ⭐⭐ **Bảng và trace đọc cùng một phép đo** — xác nhận độc lập rerank chiếm **93,6%** truy hồi (vs 92,8% của `W5-06`). ⭐⭐ **Metric có nhãn không tồn tại cho tới lần quan sát đầu**, nên *"No data"* mang hai nghĩa. ⭐⭐ Lỗi thật từ một phép tiêm **sống sót**: câu trả lời từ cache không bao giờ được quét từ chối. Bảng nói **55,6% lượt vượt ngân sách 3,5 s** và **$0,0016828/câu** (số đo cost/query đầu tiên). Tiêm 22/22 đỏ. 3 nợ mới `TD-75`…`TD-77`.
 >
 > Phiên trước: **2026-09-05 (13)** — `W5-06` xong, **`W5` 6/11**. Langfuse tự dựng (6 container, project riêng) + trace đủ tầng: một lượt `/chat` cho **7 span** kèm `$0,001299`, đọc lại bằng `GET /api/public/traces/{id}` chứ không bằng ảnh chụp. ⭐⭐ **"Truy hồi 725 ms" hoá ra là 44,8 ms tìm + 685,3 ms xếp lại** — cross-encoder chiếm **92,8%** ngân sách truy hồi, Qdrant hybrid 6,1%; cả `W2` tối ưu đúng 6%. ⭐⭐ **Request đầu sau deploy tốn 10,7× thời gian rerank** (7 353 ms) vì kernel CUDA khởi tạo ở `score()` đầu tiên trong khi `/ready` đã xanh → `TD-72`. ⭐⭐ **Trace hữu ích nhất trong bảy là của một request hỏng** — nó tồn tại vì trace mở **trước** `prepare()`. ⭐⭐ **Prompt trong trace mang `nonce` của `W4-12`** sang một hệ thống thứ hai; che theo hình dạng, 0/7 trace rò. ⭐ `TD-55` trả xong: phần khung `done` không thấy = **19,92%**. ⭐⭐ Lỗi thật: **proxy uỷ quyền tự đệ quy tới chết khi bị `copy.copy`**. Tiêm 26/26 đỏ nhưng lượt một có 3 phép sống sót, 2 là lỗ thật. 3 nợ mới `TD-72`…`TD-74`.
 >
@@ -4380,3 +4388,84 @@ như thể chưa đo. Phần audit chưa vá → `TD-84`, mỗi mục kèm chỗ
 `TD-71` + `TD-82` + `AU-12` (cả ba cùng đụng manifest và con trỏ bundle, làm
 một lần). Song song: `TD-13` là việc của bạn (~1 buổi) để gỡ chữ
 "model-reviewed" khỏi golden set.
+
+---
+
+## 2026-09-06 (18) — `W5-10`: đường phát hành tự động, và hành động đầu tiên của nó là một lần từ chối
+
+**Xong**: `W5-10` — `W5` **10/11**. Gộp ba món đã hẹn trả cùng chỗ (`TD-71` ✅,
+`AU-12` ✅, `TD-82` 🟡 thu hẹp), vì cả ba đụng đúng một câu hỏi: *bundle nào
+đang phục vụ, và ai nói thế*.
+
+**Có gì mới**: `bundles/CURRENT` (con trỏ phát hành) · `pipeline/bundle/promote.py`
+(đúc bản phát hành + rollback) · `pipeline/eval/nightly.py` (gate → đề nghị) ·
+`.github/workflows/nightly.yml` (hai tầng) · `make nightly` / `make nightly-dry` /
+`make bundle-rollback`.
+
+**⭐⭐ `AU-12` không phải một hằng số gõ sai — nó là bản sao thứ hai của một sự
+thật.** `smoke.py` hardcode `v0.2.1`, `app.py` **suy ra** "bản semver cao nhất":
+hai câu trả lời độc lập cho cùng một câu hỏi. Khi chúng lệch, triệu chứng là một
+cổng PR **màu xanh** gác cấu hình cũ — bug ở tầng meta, nó không làm hỏng truy
+vấn nào, nó làm hỏng niềm tin vào cổng, và nó không tự lộ ra được. Dựng con trỏ
+để xoá bản sao thì phơi ra thêm **hai** lỗi cùng gốc `latest_bundle`: một lần
+`save_bundle` release candidate **là một lần deploy**, và **rollback không sống
+qua restart**. Nhánh suy luận vẫn còn cho dev nhưng phải tự khai bằng
+`logger.warning` (có test ghim); cổng PR thì **không** có nhánh đoán.
+
+**⭐⭐ `TD-71` — cách sai để ghi phán quyết vào bundle là mở manifest ra ký
+lại.** Nó phá đúng luật số 1 của `store.py` (bất biến), và một manifest sửa được
+sau khi ký thì chữ ký chỉ còn là trang trí. `promote()` đúc **bản patch mới**
+mang `gate.status=PASS`. Điểm dễ sai nhất: **`git_sha` giữ nguyên của ứng viên**
+— nó trỏ về mã sinh ra SỐ ĐO, không phải commit của cái đêm dời con trỏ; commit
+ấy vào `notes`. Ba phép từ chối: không PASS · phán quyết nói về **bundle khác**
+(dán dấu PASS lên artifact chưa ai chấm) · PASS mà không champion. Và dựng bằng
+`model_validate` chứ không `model_copy`: đường này ghi ra đĩa **và ký**.
+
+**⭐⭐ `TD-82` — sửa một hàm băm là sửa mọi artifact đã ghi bằng nó.** Ba lựa
+chọn, hai cái đầu sai: đúc lại 3 manifest **đã ký** biến chữ ký thành trang trí;
+để nguyên thì bản vá một lỗi *im lặng* tự tạo một lỗi *ồn ào* (`make index` bị
+chặn, `build_bundle` từ chối số đo hợp lệ). Chọn cái thứ ba — **sửa công thức và
+dạy hệ thống đọc công thức cũ**: `fingerprint_status → current|legacy|mismatch`,
+`legacy_windows_fingerprint` dùng `PureWindowsPath` nên tính được biến thể
+Windows trên **cả hai** HĐH. Nhờ vậy `test_the_sample_bundle_matches_the_real_index_config`
+hết `skipif(os.name != 'nt')` — nửa số máy chạy CI lấy lại một phép kiểm. Bài
+ghim nợ cũ (đọc `inspect.getsource`) thay bằng bài **quét payload**: nó bắt được
+cả trường path *tiếp theo*.
+
+**⭐⭐ Champion của một quyết định phát hành là bản ĐANG PHỤC VỤ**, không phải
+bản kề dưới. Sau một lần rollback hai thứ đó khác nhau, và mặc định của `gate.py`
+sẽ so với bản không ai đang dùng.
+
+**Lần chạy thật là một lần TỪ CHỐI**: `make nightly` → `INCOMPARABLE`, exit 2,
+12 PASS / 5 FAIL / 3 SKIP, không đề nghị gì — và nó từ chối vì đúng lý do (bí
+danh generator `TD-70` · `citation_accuracy` 0,8308 vẫn là số trong manifest ·
+p95 4.706 > 3.500). Nhánh PASS được **diễn tập** riêng trên bản sao đĩa thật
+(`probes/w5-10-promote-rehearsal.json`): đúc `0.3.1`, con trỏ `0.2.1 → 0.3.1`,
+`gate` nằm trong manifest, `git_sha` giữ nguyên — và `notes` cảnh báo "số bịa"
+của ứng viên **đi theo** artifact. Lý do phải diễn tập: một nhánh chỉ từng thấy
+ở trạng thái từ chối là một nhánh chưa ai biết có chạy không — mặt kia của bài
+học `G5` ở `W5-09`.
+
+**Tiêm 23/23 đỏ** — nhưng lượt một là 21/23, và **cả hai phép sống sót là lỗ
+trong TEST**, không phải trong mã: một bài chạy trên thư mục **rỗng** nên `None`
+là câu trả lời của cả đường đúng lẫn đường sai; một bài viết
+`assert x == HẰNG_SỐ` tức **đọc chính hằng số bị đổi**. Cùng một họ: *một phép
+kiểm chỉ đo được gì đó khi đường đúng và đường sai cho hai kết quả khác nhau.*
+
+**Đo cuối**: 39 test mới + 3 viết lại · **2 232 xanh** bộ mặc định (2 skip) ·
+**280 xanh** integration (2 skip) · `ruff`/`mypy`/`mypy --platform linux` sạch ·
+chi phí **$0**.
+
+**⚠️ Còn hở**: `nightly.yml` **chưa từng chạy trên GitHub** → `TD-85` (không có
+runner GPU cho tầng 1, không có credential để `workflow_dispatch` tầng 2). YAML
+được gác bằng 7 bài đọc chính file ấy, nhưng đọc file không phải chạy nó.
+`TD-83` (smoke tầng sinh) chuyển sang `W5-11`: cổng tầng sinh phải dùng **kiểm
+định** chứ không ngưỡng tuyệt đối, và máy kiểm định cần **hai** nhánh model để
+so — chỗ dành sẵn đã ghi thẳng trong `nightly.yml`.
+
+**Việc tiếp theo**: `W5-11` ⭐ generator ablation — `Qwen3-8B (vLLM)` vs
+`deepseek-chat` vs một slug OpenRouter ghim, **cùng một retrieval stack**. Nó sở
+hữu con số p95 chính thức và cost/query, phải chạy lại hiệu chỉnh từ chối
+(`TD-77`), và nó là chỗ trả của `TD-83` lẫn `TD-70`. Xong `W5-11` là `W5` 11/11.
+Song song: `TD-13` vẫn là việc của bạn (~1 buổi) để gỡ chữ "model-reviewed" khỏi
+golden set.

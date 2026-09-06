@@ -1,0 +1,177 @@
+# Eval đêm + đề nghị phát hành — `W5-10`.
+#
+# ## Vì sao đây là workflow THỨ HAI chứ không phải một job trong `ci.yml`
+#
+# `ci.yml` là cổng chặn PR: mọi job của nó phải tất định, không tốn tiền, không
+# cần secret, và chạy được cho PR từ fork. Workflow này vi phạm cả bốn — nó gọi
+# model, nó cần GPU, nó ghi vào repo. Nhét chung một file là biến bốn tính chất
+# ấy thành "tuỳ job", và cái mất đi là câu trả lời đơn giản cho *"cổng chặn PR
+# gồm những gì"*.
+#
+# ## ⭐⭐ Runner: hôm nay CHƯA có, và điều đó phải nhìn thấy được
+#
+# `runs-on` trỏ vào nhãn `self-hosted, gpu`. Chưa có máy nào mang nhãn ấy, nên
+# job `full-eval` sẽ **treo ở hàng đợi** thay vì đỏ — thứ tệ hơn cả đỏ, vì nó
+# trông giống "đang chạy". Nên nó bị chặn sau một `if` đọc biến repo
+# `NIGHTLY_GPU_RUNNER`: chưa bật thì job bị **skip**, và lịch sử Actions ghi
+# "skipped" chứ không ghi một hàng đợi vô tận.
+#
+# Phần **không** cần GPU — gate + promote + mở PR — chạy trên `ubuntu-latest` và
+# hoạt động ngay hôm nay. Đó là chủ ý: đường phát hành phải chạy được trước khi
+# có máy đo, nếu không thì lần đầu nó chạy sẽ là lần đầu nó được thử.
+#
+# ## Vì sao PR chứ không phải push thẳng
+#
+# Gate là một phán quyết máy đưa ra dựa trên số đo. Nó **không** biết corpus có
+# vừa đổi không, có sự cố nào đang mở không, có thay đổi vận hành nào phải đi
+# cùng bundle không. Một PR để nguyên phán quyết ấy làm bằng chứng và để chữ ký
+# cuối cho người — chi phí là một cú click, đổi lại là một đường phát hành có
+# thể tin được lúc 3 giờ sáng.
+
+name: nightly-eval
+
+on:
+  schedule:
+    # 19:00 UTC = 02:00 giờ Việt Nam. Chọn giờ thấp điểm của DeepSeek/GLM để
+    # lượt gọi model không tranh với lúc dùng thật.
+    - cron: "0 19 * * *"
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: "Version ứng viên (bỏ trống = bản semver cao nhất)"
+        required: false
+        type: string
+      promote:
+        description: "Đúc bundle phát hành + mở PR nếu gate PASS"
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  # Không huỷ lượt đang chạy: một lượt eval đêm bị cắt ngang để lại artifact dở
+  # và không để lại phán quyết nào. Xếp hàng thì tệ nhất là chậm.
+  group: nightly-eval
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  UV_VERSION: "0.9.11"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Tầng 1 — đo lại toàn bộ golden_v1. Cần GPU + secret, nên nó là tầng duy
+  # nhất bị chặn sau một runner chưa tồn tại.
+  # ---------------------------------------------------------------------
+  full-eval:
+    name: full eval golden_v1 (GPU + model)
+    if: vars.NIGHTLY_GPU_RUNNER == 'on'
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 180
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+      QDRANT_URL: ${{ vars.NIGHTLY_QDRANT_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Cài phụ thuộc
+        run: uv sync --all-extras
+      # Đi qua Makefile chứ không gõ lại cờ: `eval-rerank` mang đúng bộ tham số
+      # THẮNG của `W2-04` (`--rrf-k 1 --candidate-k 20`), và một bản sao thứ hai
+      # của bộ ấy trong YAML là bản sao sẽ lệch — đúng họ lỗi với `AU-12`.
+      - name: Eval truy hồi trên golden_v1
+        run: make eval-rerank RUN=nightly-$(date -u +%Y%m%d)
+      # ⚠️ Chưa có bước eval TẦNG SINH ở đây, và đó là `TD-83` chứ không phải
+      # một chỗ quên. Một cổng tầng sinh phải dùng **kiểm định** chứ không dùng
+      # ngưỡng tuyệt đối: `TD-41` đo được `temp=0` ở DeepSeek không tất định,
+      # nên một ngưỡng cứng trên một lần chạy đỏ vì nhiễu chứ không vì hồi quy.
+      # Máy kiểm định đã có (`pipeline.eval.compare`, `W2-09`); nối nó vào đây
+      # cần **hai** nhánh model để so, tức nó thuộc `W5-11`.
+      - name: Tải kết quả lên
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-full-eval
+          path: plans/reports/runs/
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------
+  # Tầng 2 — gate + đề nghị phát hành. Không GPU, không model, không secret:
+  # nó đọc số đo đã nằm trong bundle. Chạy được ngay hôm nay.
+  # ---------------------------------------------------------------------
+  gate-and-promote:
+    name: gate + đề nghị phát hành
+    needs: [full-eval]
+    # `always()` vì `full-eval` bị skip khi chưa có runner GPU, và một `needs`
+    # bị skip làm job này skip theo — tức toàn bộ đường phát hành biến mất im
+    # lặng. Vẫn chặn nếu tầng 1 chạy và ĐỎ: một phán quyết dựa trên số đo hỏng
+    # còn tệ hơn không có phán quyết nào.
+    if: always() && needs.full-eval.result != 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Cài phụ thuộc
+        run: uv sync --extra dev --extra pipeline
+
+      - name: Eval đêm (gate → promote)
+        id: nightly
+        # `|| true` rồi tự đọc exit code: exit 1/2 là **phán quyết**, không phải
+        # sự cố hạ tầng. Để job đỏ ở đây thì mỗi đêm hệ thống chưa qua ngưỡng là
+        # một thông báo đỏ, và thông báo đỏ hàng đêm là thông báo không ai đọc.
+        run: |
+          set +e
+          uv run python -m pipeline.eval.nightly \
+            ${{ inputs.candidate && format('--candidate {0}', inputs.candidate) || '' }} \
+            ${{ inputs.promote == false && '--no-promote' || '' }} \
+            --out-dir plans/reports/runs
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          git diff --quiet -- bundles/ && echo "promoted=false" >> "$GITHUB_OUTPUT" \
+            || echo "promoted=true" >> "$GITHUB_OUTPUT"
+
+      - name: Tải báo cáo lên
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-gate
+          path: |
+            plans/reports/runs/nightly-*.json
+            plans/reports/runs/nightly-pr-body.md
+            plans/reports/runs/gate-*.html
+          if-no-files-found: warn
+
+      # Chỉ mở PR khi có thứ để phát hành. `promoted` đọc từ `git diff` chứ
+      # không từ exit code: exit 0 cũng xảy ra khi "không có ứng viên mới", và
+      # một PR rỗng mỗi đêm là cách nhanh nhất để mọi người tắt thông báo.
+      - name: Mở PR promote
+        if: steps.nightly.outputs.promoted == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: promote/nightly
+          title: "release: promote bundle theo gate đêm"
+          body-path: plans/reports/runs/nightly-pr-body.md
+          commit-message: "release: bundle mới + dời con trỏ CURRENT (gate PASS)"
+          add-paths: |
+            bundles/
+            plans/reports/runs/
+          delete-branch: true
+
+      # Gate trượt thì không mở PR, nhưng cũng không được im lặng. Bản tóm tắt
+      # đi vào `$GITHUB_STEP_SUMMARY` — đọc được ngay trên trang lượt chạy, không
+      # phải tải artifact về.
+      - name: Tóm tắt vào trang lượt chạy
+        if: always()
+        run: cat plans/reports/runs/nightly-pr-body.md >> "$GITHUB_STEP_SUMMARY"

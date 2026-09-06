@@ -23,15 +23,42 @@ from .schema import BundleValidationError, RagBundle, parse_semver
 __all__ = [
     "BUNDLE_DIR_PREFIX",
     "MANIFEST_NAME",
+    "POINTER_NAME",
     "bundle_dir_name",
+    "current_bundle",
     "latest_bundle",
     "list_bundles",
     "load_bundle",
+    "read_pointer",
     "save_bundle",
+    "write_pointer",
 ]
 
 MANIFEST_NAME = "manifest.json"
 BUNDLE_DIR_PREFIX = "rag-bundle-v"
+POINTER_NAME = "CURRENT"
+"""Tên file chứa **một** version: bundle đang được chọn để phục vụ.
+
+## ⭐⭐ Vì sao cần một con trỏ khi đã có `latest_bundle`
+
+`latest_bundle` trả bản semver cao nhất trong thư mục. Ba hệ quả, cả ba đều là
+lỗi thật chứ không phải chuyện thẩm mỹ:
+
+1. **`save_bundle` trở thành một lần deploy.** Đúc một release candidate để
+   chạy gate — thứ mà `W5-10` làm mỗi đêm — là đủ để đổi cái mà serving nạp ở
+   lần restart kế tiếp, kể cả khi bundle ấy vừa **trượt** gate.
+2. **Rollback không sống qua restart.** `POST /admin/bundle` đổi bundle đang
+   chạy trong bộ nhớ; lần khởi động sau `latest_bundle` lại chọn bản cao nhất
+   và lặng lẽ huỷ kết quả của lần rollback ấy.
+3. **Cổng PR gác một cấu hình khác cấu hình đang phục vụ** (`AU-12`):
+   `pipeline/eval/smoke.py` từng hardcode `bundles/rag-bundle-v0.2.1`, còn CI
+   và Makefile không truyền `--bundle`. Bump bundle mà quên sửa hằng số ấy là
+   một cổng xanh chứng nhận một hệ thống không còn tồn tại.
+
+Một con trỏ trả lời cả ba: kho artifact vẫn bất biến, phần **thay đổi được** co
+lại đúng một dòng chữ, và dòng ấy nằm trong git nên mỗi lần promote/rollback là
+một commit đọc được.
+"""
 
 
 def bundle_dir_name(version: str) -> str:
@@ -126,3 +153,52 @@ def list_bundles(root: Path, *, verify: bool = True) -> list[RagBundle]:
 def latest_bundle(root: Path, *, verify: bool = True) -> RagBundle | None:
     found = list_bundles(root, verify=verify)
     return found[-1] if found else None
+
+
+def read_pointer(root: Path) -> str | None:
+    """Version mà `root/CURRENT` trỏ tới, hoặc `None` nếu chưa có con trỏ.
+
+    `None` khác `""`: chưa có con trỏ là trạng thái hợp lệ của một checkout mới
+    hoặc một thư mục tạm trong test. Con trỏ **rỗng** thì không — nó là một
+    lần ghi hỏng, và im lặng coi nó như "chưa có" sẽ đẩy hệ thống về đúng cái
+    hành vi `latest_bundle` mà con trỏ sinh ra để thay.
+    """
+    pointer = root / POINTER_NAME
+    if not pointer.is_file():
+        return None
+    version = pointer.read_text(encoding="utf-8").strip()
+    if not version:
+        raise BundleValidationError(
+            f"con trỏ {pointer} rỗng. Một file trống không phải 'chưa chọn' — "
+            "xoá hẳn file nếu thật sự muốn quay về suy luận theo semver."
+        )
+    parse_semver(version)  # con trỏ trỏ vào một cái tên sai thì hỏng ngay ở đây
+    return version
+
+
+def write_pointer(root: Path, version: str) -> Path:
+    """Trỏ `CURRENT` sang `version`. Từ chối nếu bundle ấy không nạp được.
+
+    Kiểm **trước khi** ghi, và kiểm bằng đúng đường mà serving đi (`load_bundle`
+    với `verify=True`). Một con trỏ trỏ vào chỗ trống hay vào một manifest sai
+    chữ ký là cách biến một lần promote thành một sự cố lúc khởi động — và lúc
+    ấy thông tin duy nhất còn lại là một tiến trình không lên được.
+    """
+    load_bundle(root / bundle_dir_name(version))
+    pointer = root / POINTER_NAME
+    pointer.write_text(version + "\n", encoding="utf-8")
+    return pointer
+
+
+def current_bundle(root: Path, *, verify: bool = True) -> RagBundle | None:
+    """Bundle mà con trỏ chọn. `None` nếu **chưa có con trỏ** — không tự đoán.
+
+    Cố ý không fallback về `latest_bundle` ở đây: hàm này trả lời câu hỏi *"đã
+    chọn cái nào chưa"*, và trộn nó với *"đoán xem cái nào"* là cách con trỏ mất
+    hết tác dụng ngay lần đầu ai đó quên tạo nó. Chỗ nào cần đoán thì phải viết
+    ra là mình đang đoán — xem `serving.api.app._startup_version`.
+    """
+    version = read_pointer(root)
+    if version is None:
+        return None
+    return load_bundle(root / bundle_dir_name(version), verify=verify)

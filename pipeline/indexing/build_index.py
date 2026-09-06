@@ -463,7 +463,22 @@ def _reconcile_state(
     if state is None:
         return fresh
 
-    if state.fingerprint != config.fingerprint:
+    status = config.fingerprint_status(state.fingerprint)
+    if status == "legacy":
+        # `TD-82`: state file được ghi trước bản vá, trên Windows. Cùng một
+        # config, chỉ khác cách serialise đường dẫn — index trong Qdrant **đúng**
+        # là do config này sinh ra, nên chặn ở đây là chặn oan. Chấp nhận **và
+        # nâng cấp**: trả về state mang vân tay mới, để lần ghi kế tiếp xoá hẳn
+        # giá trị cũ. Chấp nhận mà không nâng thì dòng cảnh báo này vĩnh viễn.
+        logger.warning(
+            "state file của `%s` mang vân tay theo công thức trước TD-82 "
+            "(%s) — cùng config, khác cách serialise đường dẫn. Nâng lên %s.",
+            config.collection_name,
+            state.fingerprint[:16],
+            config.fingerprint[:16],
+        )
+        state = state.model_copy(update={"fingerprint": config.fingerprint})
+    elif status == "mismatch":
         message = (
             f"Collection `{config.collection_name}` đang chứa index của fingerprint "
             f"{state.fingerprint[:16]} nhưng config hiện tại là {config.fingerprint[:16]}. "

@@ -21,10 +21,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+import logging
+from pathlib import Path, PureWindowsPath
+from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializationInfo,
+    field_serializer,
+    field_validator,
+)
 
 from rag_core.chunking import Chunker, ChunkingConfig, SQLiteChunkCache, build_chunker
 from rag_core.chunking.cache import CachedChunker
@@ -33,7 +41,19 @@ from rag_core.embedding import EmbeddingProvider, build_embedding_provider
 if TYPE_CHECKING:
     from rag_core.retrieval.qdrant_store import QdrantDenseRetriever
 
-__all__ = ["IndexConfig", "load_index_config"]
+__all__ = ["LEGACY_WINDOWS_PATHS", "FingerprintStatus", "IndexConfig", "load_index_config"]
+
+logger = logging.getLogger(__name__)
+
+LEGACY_WINDOWS_PATHS = "legacy_windows_paths"
+"""Khoá `context` của Pydantic bật lại **cách serialise đường dẫn trước `TD-82`**.
+
+Chỉ có một chỗ dùng nó: `IndexConfig.legacy_windows_fingerprint`. Nó tồn tại để
+tính lại **đúng** giá trị mà công thức cũ đã ghi vào các artifact trên máy
+Windows, chứ không phải để ai đó chọn kiểu serialise.
+"""
+
+FingerprintStatus = Literal["current", "legacy", "mismatch"]
 
 
 class ContextualIndexConfig(BaseModel):
@@ -60,6 +80,28 @@ class ContextualIndexConfig(BaseModel):
 
     require_fingerprint: bool = True
     """Đòi artifact khai đúng vân tay cấu hình chunk — xem `chunking_fingerprint`."""
+
+    @field_serializer("contexts_path")
+    def _serialise_contexts_path(self, value: Path, info: SerializationInfo) -> str:
+        """⭐⭐ `TD-82`: đường dẫn ra JSON theo **POSIX**, không theo hệ điều hành.
+
+        `Path` serialise ra `data\\contexts\\contexts.jsonl` trên Windows và
+        `data/contexts/contexts.jsonl` trên POSIX. Bình thường đó là chuyện hiển
+        thị — nhưng chuỗi này đi thẳng vào `IndexConfig.fingerprint`, tức **cùng
+        một config cho hai vân tay tuỳ theo máy nào tính nó**. Trên đúng cái
+        trường tồn tại để chứng minh *"index này được build bằng config này"*.
+
+        Vô hình suốt `W1`…`W5-08` vì mọi lần build đều chạy trên cùng một máy;
+        lượt CI đầu tiên trên Linux (`W5-09`) làm nó lộ ra.
+
+        `as_posix()` chứ không `str()`: POSIX là dạng chuẩn duy nhất mà cả hai
+        nền tảng cùng viết ra được, và trên Linux nó **không đổi giá trị** — nên
+        mọi artifact từng sinh trên Linux vẫn khớp. Chỉ artifact sinh trên
+        Windows lệch, và `legacy_windows_fingerprint` tính lại được đúng chúng.
+        """
+        if (info.context or {}).get(LEGACY_WINDOWS_PATHS):
+            return str(PureWindowsPath(value))
+        return value.as_posix()
 
 
 class IndexConfig(BaseModel):
@@ -160,18 +202,64 @@ class IndexConfig(BaseModel):
         chúng đổi tốc độ chứ không đổi kết quả. Có gồm bộ lọc corpus vì chúng
         quyết định **tài liệu nào** có mặt trong index.
         """
-        payload = {
-            "chunking": json.loads(self.chunking.model_dump_json()),
+        return self._fingerprint()
+
+    @property
+    def legacy_windows_fingerprint(self) -> str:
+        """Giá trị mà công thức **trước `TD-82`** cho ra khi chạy trên Windows.
+
+        Không phải một API để chọn dùng: nó có mặt để `fingerprint_status` phân
+        biệt được *"artifact này ghi bằng công thức cũ trên Windows"* với
+        *"artifact này thuộc về một index khác"*. Hai thứ đó cần hai câu trả lời
+        khác nhau — một cái cảnh báo, một cái phải dừng.
+
+        Trên Linux giá trị này **trùng** `fingerprint`, vì công thức cũ và mới
+        chỉ khác nhau ở dấu phân cách mà POSIX vốn đã viết đúng.
+        """
+        return self._fingerprint(legacy_windows_paths=True)
+
+    def fingerprint_status(self, recorded: str) -> FingerprintStatus:
+        """Một vân tay đã ghi thuộc loại nào so với config hiện tại.
+
+        `"legacy"` là câu trả lời mà `TD-82` bắt buộc phải có. Không có nó thì
+        bản vá sẽ biến **mọi** artifact từng sinh trên Windows — ba manifest
+        bundle, state file của index đang nằm trong Qdrant, `index_fingerprint`
+        trong hơn hai chục file eval đã lưu — thành "không khớp", tức bản vá
+        một lỗi im lặng lại tự tạo ra một lỗi ồn ào ở chỗ khác.
+
+        Và nó cố ý **không** trả `True`/`False`: người gọi phải tự quyết cảnh
+        báo hay dừng, vì "chấp nhận nhưng nói ra" chỉ đúng cho đường đọc lại
+        artifact cũ, không đúng cho đường ghi artifact mới.
+        """
+        if recorded == self.fingerprint:
+            return "current"
+        if recorded == self.legacy_windows_fingerprint:
+            return "legacy"
+        return "mismatch"
+
+    def _fingerprint(self, *, legacy_windows_paths: bool = False) -> str:
+        payload = self._fingerprint_payload(legacy_windows_paths=legacy_windows_paths)
+        blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+        return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+    def _fingerprint_payload(self, *, legacy_windows_paths: bool = False) -> dict[str, Any]:
+        """Tách khỏi `_fingerprint` để test soi được **cái gì** đi vào hàm băm.
+
+        `TD-82` là một trường lọt vào payload mang hình dạng của hệ điều hành.
+        Bài test canh chuyện đó phải quét payload chứ không quét mã, nếu không
+        thì trường path **tiếp theo** sẽ tái lập đúng lỗi này.
+        """
+        context = {LEGACY_WINDOWS_PATHS: True} if legacy_windows_paths else None
+        return {
+            "chunking": json.loads(self.chunking.model_dump_json(context=context)),
             "embedding_model": self.embedding_model,
             "embedding_normalize": self.embedding_normalize,
             "embedding_kwargs": self.embedding_kwargs,
             "languages": sorted(self.languages),
             "doc_types": sorted(self.doc_types),
             "max_documents": self.max_documents,
-            "contextual": json.loads(self.contextual.model_dump_json()),
+            "contextual": json.loads(self.contextual.model_dump_json(context=context)),
         }
-        blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
-        return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
     @property
     def chunking_fingerprint(self) -> str:

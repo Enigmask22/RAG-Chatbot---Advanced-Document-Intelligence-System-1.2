@@ -1,0 +1,24 @@
+{
+  "probe": "w5-10-promote-rehearsal",
+  "⚠️": "DIỄN TẬP. Hệ thống thật đang TRƯỢT gate (p95 4706 > 3500 ms) nên nhánh promote chưa từng chạy trên đĩa. Bản sao `bundles/` trong thư mục tạm, ứng viên 0.3.0 mang p95=3100 BỊA để đưa gate về PASS. Không số nào ở đây là một phép đo; citation_accuracy 0.8662 là số thật của NEW-08, p95 3100 thì không.",
+  "chạy": "python -m pipeline.eval.nightly --root <tmp> --out-dir <tmp>",
+  "exit_code": 0,
+  "kết_quả": {
+    "ứng_viên": "0.3.0",
+    "champion": "0.2.1",
+    "đã_đúc": "0.3.1",
+    "con_trỏ": "0.2.1 → 0.3.1"
+  },
+  "bundle_phát_hành": {
+    "gate": {
+      "status": "PASS",
+      "champion_compared": "0.2.1",
+      "report": "gate-0.3.0"
+    },
+    "git_sha": "87f912b8ae",
+    "git_sha_giữ_của_ứng_viên": true,
+    "checksum_có": true,
+    "notes": "Phát hành tự động (`W5-10`) từ ứng viên 0.3.0, gate PASS so với champion 0.2.1.\nLuật: 20 PASS · 0 SKIP.\nCommit lúc promote: 5de4307031fd (`git_sha` giữ nguyên của ứng viên — nó trỏ về mã đã sinh ra SỐ ĐO).\nGhi chú của ứng viên: DIỄN TẬP `W5-10` — số đo tầng sinh ở đây là BỊA để đưa gate về PASS. Không phải một phép đo. Không bao giờ được promote lên production."
+  },
+  "thân_PR": "# Đề nghị phát hành `0.3.1`\n\nỨng viên `0.3.0` qua gate so với champion `0.2.1`.\n\n- Bundle mới: `C:/Users/LENOVO/AppData/Local/Temp/claude/D--studioproj-RAG-Chatbot/a28753bf-4cd9-46cc-b203-a6974baeed37/scratchpad/rehearsal-bundles/rag-bundle-v0.3.1/manifest.json`\n- Con trỏ `CURRENT`: `0.2.1` → `0.3.1`\n- `git_sha` giữ nguyên của ứng viên — nó trỏ về mã đã sinh ra **số đo**, không phải commit của lần promote.\n\n**Merge PR này là lần phát hành.** Trước khi merge, kiểm hai thứ mà máy không kiểm được: số đo có được đo trên đúng corpus đang phục vụ không, và có thay đổi vận hành nào ngoài bundle cần đi cùng không.\n\n## Gate: **PASS** (exit 0)\n\nỨng viên `0.3.0` · champion `0.2.1` · 20 PASS / 0 FAIL / 0 SKIP\nNgưỡng: `configs/eval/gate.yaml`\n\n<details><summary>Toàn bộ luật</summary>\n\n| | nhóm | luật | chi tiết |\n|---|---|---|---|\n| ✅ | comparability | `generator không phải bí danh` | 'deepseek-v4-flash' là slug tường minh |\n| ✅ | comparability | `golden_set` | 'golden_v1' |\n| ✅ | comparability | `evaluated_with_generator` | 'deepseek-v4-flash' |\n| ✅ | comparability | `judge_identity` | 'deepseek-v4-flash\\|judge-answer-relevancy@v1,judge-faithfulness@v2\\|reasoning=false' |\n| ✅ | validity | `chưa chấm được · answer_relevancy` | 0.0% phán quyết không đọc được (trần 5%) |\n| ✅ | validity | `chưa chấm được · faithfulness` | 0.0% phán quyết không đọc được (trần 5%) |\n| ✅ | validity | `chưa chấm được · misattribution` | 0.0% phán quyết không đọc được (trần 5%) |\n| ✅ | validity | `chưa chấm được · uncited_grounding` | 0.0% phán quyết không đọc được (trần 5%) |\n| ✅ | validity | `judge đã hiệu chỉnh` | κ vs người = 0.737 (tối thiểu 0.6) |\n| ✅ | absolute | `ndcg@10` | 0.7079 ≥ 0.6 |\n| ✅ | absolute | `recall@5` | 0.7847 ≥ 0.7 |\n| ✅ | absolute | `faithfulness` | 0.9877 ≥ 0.92 |\n| ✅ | absolute | `citation_accuracy` | 0.8662 ≥ 0.85 |\n| ✅ | absolute | `refusal_accuracy` | 0.9091 ≥ 0.85 |\n| ✅ | absolute | `p95_end_to_end_ms` | 3100.0000 ≤ 3500.0 |\n| ✅ | regression | `citation_accuracy` | 0.8662 vs champion 0.8308 (+0.0354, cho phép tụt 0.01) |\n| ✅ | regression | `faithfulness` | 0.9877 vs champion 0.9877 (+0.0000, cho phép tụt 0.01) |\n| ✅ | regression | `ndcg@10` | 0.7079 vs champion 0.7079 (+0.0000, cho phép tụt 0.01) |\n| ✅ | regression | `recall@5` | 0.7847 vs champion 0.7847 (+0.0000, cho phép tụt 0.01) |\n| ✅ | regression | `refusal_accuracy` | 0.9091 vs champion 0.9091 (+0.0000, cho phép tụt 0.02) |\n\n</details>\n"
+}

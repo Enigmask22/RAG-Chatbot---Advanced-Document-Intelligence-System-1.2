@@ -50,6 +50,7 @@ from typing import Any
 
 import numpy as np
 
+from rag_core.bundle import MANIFEST_NAME, POINTER_NAME, bundle_dir_name, read_pointer
 from rag_core.embedding.base import EmbeddingProvider, FloatArray, HybridVectors
 from rag_core.embedding.sparse import SparseVector
 from rag_core.schemas import Chunk, DocumentMetadata
@@ -59,13 +60,14 @@ from .metrics import ndcg_at_k, recall_at_k, reciprocal_rank
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "DEFAULT_BUNDLE",
+    "DEFAULT_BUNDLE_ROOT",
     "SMOKE_PREFIX",
     "FrozenEmbedder",
     "SmokeFixture",
     "SmokeQuery",
     "SmokeResult",
     "UnknownTextError",
+    "default_bundle",
     "load_fixture",
     "retrieval_options",
     "run_smoke",
@@ -82,7 +84,35 @@ thành thứ nhìn thấy được.
 
 FIXTURE_VERSION = 1
 DEFAULT_TOP_K = 10
-DEFAULT_BUNDLE = Path("bundles/rag-bundle-v0.2.1/manifest.json")
+DEFAULT_BUNDLE_ROOT = Path("bundles")
+
+
+def default_bundle(root: Path = DEFAULT_BUNDLE_ROOT) -> Path:
+    """Manifest của bundle **đang được trỏ tới**, không phải một version gõ tay.
+
+    ## ⭐⭐ `AU-12`: một cổng mang bản sao thứ hai của "đang chạy bản nào"
+
+    Bản `W5-09` viết `DEFAULT_BUNDLE = Path("bundles/rag-bundle-v0.2.1/...")`,
+    còn CI lẫn Makefile không truyền `--bundle`. Hằng số ấy là bản sao thứ hai
+    của một sự thật đã có chỗ ở: bundle nào đang phục vụ. Bump lên `0.3.0` mà
+    quên sửa nó thì cổng PR vẫn xanh — trong khi thứ nó gác là `retrieval.options`
+    của **bản cũ**, tức đúng loại thay đổi mà `retrieval_options` sinh ra để bắt.
+
+    Bug ở tầng meta: nó không làm hỏng một truy vấn nào, nó làm hỏng **niềm tin
+    vào cổng**. Và nó không thể tự lộ ra, vì triệu chứng của nó là màu xanh.
+
+    Sửa bằng cách bỏ bản sao đi: hỏi `bundles/CURRENT`, đúng con trỏ mà
+    `serving.api.app._startup_version` hỏi. Hai bên lệch nhau không còn là một
+    khả năng.
+    """
+    version = read_pointer(root)
+    if version is None:
+        raise FileNotFoundError(
+            f"không có con trỏ {root / POINTER_NAME}. Smoke phải gác đúng bundle "
+            "đang phục vụ, nên nó không đoán: tạo con trỏ, hoặc truyền `--bundle` "
+            "tường minh nếu đang cố tình chấm một bản khác."
+        )
+    return root / bundle_dir_name(version) / MANIFEST_NAME
 
 
 def retrieval_options(manifest_path: Path) -> dict[str, Any]:
@@ -405,8 +435,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--bundle",
         type=Path,
-        default=DEFAULT_BUNDLE,
-        help="manifest bundle để lấy tham số nhánh hybrid — xem `retrieval_options`",
+        default=None,
+        help=(
+            "manifest bundle để lấy tham số nhánh hybrid — xem `retrieval_options`. "
+            f"Mặc định: bundle mà `bundles/{POINTER_NAME}` trỏ tới."
+        ),
     )
     parser.add_argument("--qdrant-url", default=None)
     parser.add_argument("--top-k", type=int, default=DEFAULT_TOP_K)
@@ -448,8 +481,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     written = seed_collection(store, fixture)
     logger.info("đã ghi %d point vào %s", written, args.collection)
 
-    options = retrieval_options(args.bundle)
-    logger.info("tham số truy hồi đọc từ %s: %s", args.bundle, options)
+    bundle = args.bundle if args.bundle is not None else default_bundle()
+    options = retrieval_options(bundle)
+    logger.info("tham số truy hồi đọc từ %s: %s", bundle, options)
     retriever = QdrantHybridRetriever(store, **options)
     result = run_smoke(retriever, fixture, top_k=args.top_k)
     for name, value in sorted(result.metrics.items()):

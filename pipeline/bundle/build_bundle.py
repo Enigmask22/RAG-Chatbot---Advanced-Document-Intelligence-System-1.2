@@ -157,7 +157,19 @@ def _check_provenance(
         ("báo cáo build index", index_report.get("fingerprint")),
         ("lượt chạy eval", eval_config.get("index_fingerprint")),
     ):
-        if value != expected:
+        status = config.fingerprint_status(value) if isinstance(value, str) else "mismatch"
+        if status == "legacy":
+            # `TD-82`: artifact sinh trên Windows trước bản vá. Cùng một config —
+            # từ chối ở đây là từ chối đóng gói những số đo hợp lệ chỉ vì công
+            # thức băm đã được sửa sau khi chúng được ghi.
+            logger.warning(
+                "%s khai vân tay theo công thức trước TD-82 (%s); chấp nhận vì "
+                "nó mô tả đúng config `%s`. Bundle mới ghi vân tay hiện tại.",
+                source,
+                value,
+                config.name,
+            )
+        elif status == "mismatch":
             mismatches.append(f"  {source}: {value}")
     if mismatches:
         raise BundleValidationError(

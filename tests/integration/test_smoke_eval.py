@@ -22,11 +22,11 @@ from typing import Any
 import pytest
 
 from pipeline.eval.smoke import (
-    DEFAULT_BUNDLE,
     SMOKE_PREFIX,
     FrozenEmbedder,
     SmokeFixture,
     compare_to_baseline,
+    default_bundle,
     load_fixture,
     retrieval_options,
     run_smoke,
@@ -41,7 +41,7 @@ COLLECTION = "rag_smoke_pytest"
 
 # Đọc từ **manifest bundle**, không gõ lại: một bản sao thứ hai của cấu hình
 # production biến cổng thành cổng của một hệ thống không tồn tại.
-PRODUCTION_OPTIONS = retrieval_options(DEFAULT_BUNDLE)
+PRODUCTION_OPTIONS = retrieval_options(default_bundle())
 
 
 @pytest.fixture(scope="module")
@@ -98,7 +98,7 @@ class TestTheFrozenIndexReproducesTheBaseline:
     def test_the_options_come_from_the_bundle_not_from_this_file(self) -> None:
         """⭐ Cổng gác cả **cấu hình**: đổi `components.retrieval.options` trong
         manifest là đổi `retrieval_options`, và bộ ấy nằm trong baseline."""
-        assert retrieval_options(DEFAULT_BUNDLE) == PRODUCTION_OPTIONS
+        assert retrieval_options(default_bundle()) == PRODUCTION_OPTIONS
         assert isinstance(PRODUCTION_OPTIONS["weights"], tuple)
 
     def test_the_numbers_are_stable_across_two_runs(
