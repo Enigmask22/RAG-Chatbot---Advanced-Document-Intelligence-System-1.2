@@ -77,6 +77,45 @@ up-api: up  ## `W4-13`: bật thêm API (build image nếu cần), đợi /ready
 smoke:  ## `W4-13`: e2e qua compose thật — cần `make up-api` trước
 	$(PY) pytest tests/e2e -m e2e
 
+.PHONY: docker-usage
+docker-usage:  ## Docker đang chiếm bao nhiêu, và bao nhiêu là rác
+	@docker system df
+	@echo
+	@echo "Đã dùng THẬT bên trong đĩa ảo (so con số này với kích thước vhdx):"
+	@wsl -d docker-desktop -e sh -c \
+	  'nsenter -t 1 -m -- df -h /mnt/docker-desktop-disk 2>/dev/null | tail -1' || true
+	@echo
+	@echo "Kích thước vhdx trên ổ D:"
+	@powershell.exe -NoProfile -Command \
+	  "'{0:N2} GiB' -f ((Get-Item 'D:\wsl\DockerDesktopWSL\disk\docker_data.vhdx').Length/1GB)" || true
+
+.PHONY: docker-clean
+docker-clean:  ## Dọn build cache + image mồ côi. KHÔNG đụng volume (index Qdrant nằm đó)
+# ⭐⭐ Build cache là thứ phình to nhất và im lặng nhất trong dự án này.
+#
+# `serving/Dockerfile` đúc một image **7 GB** (torch CUDA — `TD-57`), và mỗi lần
+# `make up-api` build lại là thêm một lớp cache. Đo ngày 07/09/2026: **18 lần
+# build → 21,5 GB cache**, nhiều hơn cả tổng số image. Không có gì báo, không có
+# gì hiện ra ở `docker images`.
+#
+# ⚠️⚠️ CỐ Ý KHÔNG có `docker volume prune` và KHÔNG có `system prune -a`:
+#   * `rag-platform_qdrant_data` là **index thật** (~12 GB, 20.424 chunk BGE-M3).
+#     Dựng lại nó tốn hàng giờ GPU.
+#   * `rag-platform_postgres_data` giữ lịch sử hội thoại + feedback của `W5-08`.
+#   * `rag-serving:local` (7 GB) mất đi là 6 phút build lại cho mỗi lần `make smoke`.
+#
+# ⚠️ Và một cái bẫy: `docker container prune` làm mọi volume thành "mồ côi" dưới
+# mắt `docker system df`, tức một lệnh `volume prune` gõ ngay sau đó sẽ xoá sạch
+# index. Nên target này KHÔNG xoá container đã dừng.
+	docker builder prune -af
+	docker image prune -f
+	@echo
+	@docker system df
+	@echo
+	@echo "⚠️  Chỗ vừa giải phóng nằm BÊN TRONG đĩa ảo — ổ D chưa nhận lại được."
+	@echo "    vhdx của WSL chỉ phình ra, không tự co (chế độ sparse bị Microsoft"
+	@echo "    tắt vì rủi ro hỏng dữ liệu). Muốn trả về ổ D thì xem DOCKER-DISK.md"
+
 .PHONY: up-langfuse
 up-langfuse:  ## `W5-06`: bật Langfuse tự dựng (web+worker+clickhouse+minio+redis+pg)
 	$(LANGFUSE) up -d --wait
