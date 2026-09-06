@@ -107,10 +107,23 @@ class Settings(BaseSettings):
     ingest_api_url: str | None = None
     """`W6-01`: URL của API ingestion (`W3-08`) để bảng tiến độ trong UI hỏi.
 
-    **Mặc định tắt.** `AU-10`: dịch vụ ấy không có auth và đang được che bằng
-    cách bind `127.0.0.1`; `serving/api/ingest.py` đi vòng qua `/admin/ingest`
-    để tầng auth của `W4-04` áp dụng được. Một bề mặt điều khiển pipeline mở
-    sẵn ở mọi lần deploy là thứ không ai xin — nên phải bật tường minh.
+    **Mặc định tắt.** `serving/api/ingest.py` đi vòng qua `/admin/ingest` để tầng
+    auth của `W4-04` áp dụng được. Một bề mặt điều khiển pipeline mở sẵn ở mọi
+    lần deploy là thứ không ai xin — nên phải bật tường minh.
+    """
+
+    ingest_api_token: SecretStr | None = None
+    """`W6-06` / `AU-10`: bí mật dùng chung giữa proxy `/admin/ingest` và dịch vụ
+    ingestion.
+
+    ⭐ Một **service token**, không phải một kho khoá đa tenant: dịch vụ ấy có
+    đúng một client hợp lệ (proxy của Serving Plane), và dựng một `ApiKeyStore`
+    thứ hai cho một client là thêm một chỗ để xoay vòng, một chỗ để quên.
+
+    ⚠️ Không đặt ⇒ dịch vụ ingestion **chỉ nhận lời gọi loopback** (xem
+    `pipeline.ingest.app.guard`). Đó là hành vi mặc định an toàn cho máy dev; một
+    triển khai có hai container thì phải đặt token, vì khi đó client không còn
+    là loopback nữa.
     """
 
     bundle_warmup: bool = True

@@ -101,7 +101,13 @@ class JsonFormatter(logging.Formatter):
         if request_id is not None:
             payload["request_id"] = request_id
         if record.exc_info:
-            payload["exc"] = self.formatException(record.exc_info)
+            # ⭐⭐ `W6-06`: ưu tiên `record.exc_text`. `RedactingFilter` kết xuất
+            # traceback rồi che PII/credential vào đúng trường ấy, và gọi thẳng
+            # `formatException` ở đây sẽ **đi vòng qua** bản đã che — đúng lỗ mà
+            # probe của `W6-06` đo được (email bị che ở `msg`, lọt nguyên vẹn ở
+            # traceback). Fallback giữ lại cho trường hợp formatter này được
+            # dùng mà không có filter (test, hoặc một handler lắp tay).
+            payload["exc"] = record.exc_text or self.formatException(record.exc_info)
         # `default=str` để một `Path`, một `datetime` hay một object bất kỳ lọt
         # vào `extra` không làm chết formatter — một dòng log bị format xấu vẫn
         # tốt hơn một dòng log biến mất. Tiện thể nó cũng an toàn với `SecretStr`:

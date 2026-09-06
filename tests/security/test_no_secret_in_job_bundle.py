@@ -37,6 +37,10 @@ PLANTED = {
     "aws_access_key": "aws_key: AKIAIOSFODNN7EXAMPLE",
     "private_key_block": "-----BEGIN OPENSSH PRIVATE KEY-----",
     "assigned_secret": 'password = "hunter2hunter2hunter2hunter2"',
+    # `W6-06` dời bảng xuống `rag_core.credentials` và thêm hai luật: khoá của
+    # CHÍNH hệ thống này, và `Bearer …` (vá `AU-09` ở tầng che log).
+    "platform_api_key": "Authorization header cũ: rag_" + "0123456789abcdef" * 3,
+    "bearer_token": "curl -H 'Authorization: Bearer abcdef0123456789xyz'",
 }
 
 

@@ -15,6 +15,7 @@ mất vài giây để khởi động và giữ 2 GB RAM cho một tiến trình
 
 from __future__ import annotations
 
+import hmac
 import logging
 import uuid
 from collections.abc import AsyncIterator
@@ -23,6 +24,8 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+
+from rag_core.settings import get_settings
 
 from .schemas import IngestRequest, JobState, JobStatus, resolve_config
 from .store import JobStore
@@ -59,6 +62,67 @@ def get_store(request: Request) -> JobStore:
 
 StoreDep = Annotated[JobStore, Depends(get_store)]
 
+LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+def guard(request: Request) -> None:
+    """Ai được gọi dịch vụ này — `AU-10`, vá ở `W6-06`.
+
+    ## ⭐⭐ Biện pháp giảm nhẹ cũ là một **quy ước triển khai**, không phải một bất biến
+
+    `AU-10` ghi: "`POST /ingest` nhận cả `recreate=true` (xoá collection). Giảm
+    nhẹ hiện tại: bind `127.0.0.1`, Docker không expose." Cả hai vế ấy đúng, và
+    cả hai đều nằm **ngoài** mã: chúng là một cờ dòng lệnh và một dòng YAML. Một
+    `--host 0.0.0.0` gõ vội trong lúc gỡ lỗi xoá sạch chúng, không để lại gì
+    trong diff và không có gì đỏ.
+
+    Nên `W6-06` biến quy ước ấy thành thứ **mã tự kiểm**:
+
+    1. `INGEST_API_TOKEN` có đặt ⇒ mọi route (trừ `/healthz`) đòi đúng token ấy
+       ở `Authorization: Bearer …`. Đây là đường cho một triển khai thật, nơi
+       proxy `/admin/ingest` của Serving Plane là client duy nhất.
+    2. Không đặt ⇒ **chỉ loopback gọi được**. Máy dev không phải cấu hình gì
+       thêm, mà một lần bind ra ngoài cũng không mở được cửa.
+
+    ⭐ So sánh token bằng `hmac.compare_digest`, khác `ApiKeyStore` — ở đó digest
+    là *khoá tra dict* nên không có phép so nào chạy trên bí mật (xem docstring
+    `serving.core.auth`); ở đây thì có đúng một token và phép so là so chuỗi
+    thật, tức thời gian so **là** một kênh phụ.
+
+    ⚠️ `/healthz` để ngoài, cùng lý lẽ `/health` của Serving Plane: bắt probe
+    mang credential là đưa credential vào manifest deploy của mọi môi trường.
+    """
+    settings = get_settings()
+    token = settings.ingest_api_token
+    if token is not None:
+        header = request.headers.get("authorization", "")
+        prefix = "bearer "
+        supplied = header[len(prefix) :].strip() if header.lower().startswith(prefix) else ""
+        if not supplied or not hmac.compare_digest(supplied, token.get_secret_value()):
+            logger.warning("401 %s %s", request.method, request.url.path)
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                "cần `Authorization: Bearer …` khớp INGEST_API_TOKEN",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return
+    host = request.client.host if request.client else None
+    if host not in LOOPBACK:
+        logger.warning(
+            "403 %s %s từ %s (không có INGEST_API_TOKEN)",
+            request.method,
+            request.url.path,
+            host,
+        )
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "dịch vụ ingest chưa cấu hình INGEST_API_TOKEN nên chỉ nhận lời gọi "
+            "từ loopback. Đặt token nếu cần gọi từ máy khác.",
+        )
+
+
+GuardDep = Annotated[None, Depends(guard)]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -87,7 +151,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @api.post("/ingest", status_code=status.HTTP_202_ACCEPTED)
-    async def enqueue(request: IngestRequest, store: StoreDep) -> QueuedJob:
+    async def enqueue(request: IngestRequest, store: StoreDep, _: GuardDep) -> QueuedJob:
         # Kiểm config **ở đây**, không để worker phát hiện: một tên config sai là
         # lỗi của người gọi và họ phải biết ngay, chứ không phải nhận `job_id`
         # rồi ba giây sau thấy job FAILED.
@@ -117,7 +181,7 @@ def create_app() -> FastAPI:
         return QueuedJob.of(queued)
 
     @api.get("/ingest/{job_id}")
-    async def get_job(job_id: str, store: StoreDep) -> QueuedJob:
+    async def get_job(job_id: str, store: StoreDep, _: GuardDep) -> QueuedJob:
         found = await store.get(job_id)
         if found is None:
             raise HTTPException(

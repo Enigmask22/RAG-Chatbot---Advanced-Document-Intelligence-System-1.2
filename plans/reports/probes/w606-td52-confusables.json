@@ -1,0 +1,113 @@
+{
+  "task": "W6-06 / TD-52",
+  "bait": "ignore",
+  "substitutions": 62,
+  "caught_by_fold_table": 2,
+  "caught_by_mixed_script": 62,
+  "caught_by_either": 62,
+  "missed_by_both": [],
+  "corpus_chunks": 19744,
+  "corpus_flagged": 14,
+  "corpus_flag_rate": 0.000709,
+  "scan_us_per_chunk": 169.2,
+  "corpus_flagged_all_rules": 16,
+  "corpus_flag_rate_all_rules": 0.00081,
+  "flagged_sample": [
+    {
+      "chunk": 3760,
+      "words": [
+        "ΔTC"
+      ]
+    },
+    {
+      "chunk": 3761,
+      "words": [
+        "ΔTC"
+      ]
+    },
+    {
+      "chunk": 4013,
+      "words": [
+        "ΔTC"
+      ]
+    },
+    {
+      "chunk": 9870,
+      "words": [
+        "ΔE",
+        "ΔGDP",
+        "εln"
+      ]
+    },
+    {
+      "chunk": 9871,
+      "words": [
+        "εbase",
+        "εi",
+        "θi"
+      ]
+    },
+    {
+      "chunk": 11915,
+      "words": [
+        "βPTAij",
+        "εij",
+        "ηj",
+        "λij",
+        "μi"
+      ]
+    },
+    {
+      "chunk": 11916,
+      "words": [
+        "βPTAij",
+        "εij",
+        "ηj",
+        "λij",
+        "μi"
+      ]
+    },
+    {
+      "chunk": 11918,
+      "words": [
+        "λij"
+      ]
+    },
+    {
+      "chunk": 11922,
+      "words": [
+        "PTAijΔ"
+      ]
+    },
+    {
+      "chunk": 13337,
+      "words": [
+        "μg"
+      ]
+    },
+    {
+      "chunk": 14265,
+      "words": [
+        "μg"
+      ]
+    },
+    {
+      "chunk": 14415,
+      "words": [
+        "μg"
+      ]
+    },
+    {
+      "chunk": 14747,
+      "words": [
+        "μg"
+      ]
+    },
+    {
+      "chunk": 14882,
+      "words": [
+        "μg"
+      ]
+    }
+  ]
+}

@@ -4,7 +4,9 @@
 > file này cho biết **đang làm dở tới đâu** và **lệnh nào để tiếp tục**.
 > Trạng thái chính thức của từng task vẫn nằm ở [`CHECKLIST.md`](CHECKLIST.md).
 >
-> **Phiên mới nhất: 2026-09-06 (21) (cuối file)** — `W6-01` giao diện web chạy (`[~]`, hai ô 🟡). Một tệp tĩnh, không bước build; streaming · bấm `[n]` mở đúng nguồn và **tô đoạn được trích** · 👍/👎 · 13 bài Playwright. ⭐⭐ **Trang dựng DOM từ hai nguồn không tin được** ⇒ luật **không bao giờ `innerHTML`** + CSP. ⭐⭐ **Bấm citation cần một trường mới trong SSE** — nhưng hàng Postgres **không** được mang nó. ⭐⭐ **Trang không tìm thấy chỗ tô thì in nguyên văn quote, và không được tự ra phán quyết**. ⭐⭐ **Một lỗi production tìm ra trong lúc chụp ảnh**: khoá cache thiếu **endpoint** — server DeepSeek thật phát lại lời của stub `W6-05`. ⚠️ `upload progress` 🟡 (hệ thống không có upload → `NEW-11`). Tiêm **Python 15/15 + HTML/JS 8/8 đỏ**, và một **lượt tiêm giả** vì server cũ giữ cổng.
+> **Phiên mới nhất: 2026-09-07 (22) (cuối file)** — `W6-06` security pass xong, **$0**. 7 phát hiện mới `SEC-01`…`SEC-07` **vá hết** ⇒ DoD đạt; đóng thêm `AU-08`/`AU-09`/`AU-10`/`TD-52`/`TD-58`. ⭐⭐ **Bộ che log nói dối về chính nó** — docstring lấy `logger.exception` làm lý lẽ biện minh, và đó là đúng ca nó bỏ lọt. ⭐⭐ **Một lỗ không có trong danh mục audit nào**, rơi ra từ lượt chấm tiêm: một **dấu phụ** chèn giữa từ khoá né được cả 11 luật. ⭐⭐ **`TD-52`: nợ đòi một bảng đầy đủ, số đo nói bảng là công cụ sai** (2/62 vs 62/62). ⭐⭐ **`AU-10`: quy ước triển khai → bất biến của mã**, 14 bài đỏ là bằng chứng. ⚠️ Một giả thuyết của tôi **bị phép đo bác bỏ**. Tiêm **32/32 đỏ** sau ba lượt, kèm **hai lỗi thật trong chính bản vá**. Nợ mới `NEW-12`.
+>
+> Phiên trước: **2026-09-06 (21)** — `W6-01` giao diện web chạy (`[~]`, hai ô 🟡). Một tệp tĩnh, không bước build; streaming · bấm `[n]` mở đúng nguồn và **tô đoạn được trích** · 👍/👎 · 13 bài Playwright. ⭐⭐ **Trang dựng DOM từ hai nguồn không tin được** ⇒ luật **không bao giờ `innerHTML`** + CSP. ⭐⭐ **Bấm citation cần một trường mới trong SSE** — nhưng hàng Postgres **không** được mang nó. ⭐⭐ **Trang không tìm thấy chỗ tô thì in nguyên văn quote, và không được tự ra phán quyết**. ⭐⭐ **Một lỗi production tìm ra trong lúc chụp ảnh**: khoá cache thiếu **endpoint** — server DeepSeek thật phát lại lời của stub `W6-05`. ⚠️ `upload progress` 🟡 (hệ thống không có upload → `NEW-11`). Tiêm **Python 15/15 + HTML/JS 8/8 đỏ**, và một **lượt tiêm giả** vì server cũ giữ cổng.
 >
 > Phiên trước: **2026-09-06 (20)** — `W6-05` xong, **`W6` 1/8**. Load test. **Trần thông lượng một instance: 1,33 req/s (~80 req/phút)**, bão hoà giữa u=8 và u=16. ⭐⭐ **Một load test gọi DeepSeek thật là một load test đo DeepSeek** → stub hiệu chỉnh theo 242 request thật, chi phí **$0**. ⭐⭐ **`completion` đứng yên 4,9 s suốt 6 bậc trong khi `rerank` đi 975 → 19.364 ms** — cơ chế bão hoà **là** `TD-63`, trần = **91% của `1/thời-gian-rerank`**. ⭐⭐ **`AU-11`**: 8 câu trùng đồng thời ⇒ 8 lời gọi; nối đuôi ⇒ 0 lời gọi / 50 ms. ⭐⭐ **`TD-72` vá ở `activate` chứ không `lifespan`** — 13.386 → **4.427 ms**. ⭐⭐ Ngân sách p95 3.500 ms **không đạt được bằng tối ưu**, và nó viết trước khi có streaming. Tiêm 21/21 đỏ. Nợ mới `NEW-09`, `NEW-10`.
 >
@@ -4855,3 +4857,178 @@ tồn tại (để nó soi cả bề mặt mới — trang tĩnh, proxy `/admin/
 Hai ô 🟡 của `W6-01` đóng ở `W6-02` (khoá cho người lạ) và `NEW-11` (quyết định
 về upload). Và `TD-13` vẫn là việc của bạn — điều kiện duy nhất còn thiếu của
 `G1`, và `W6-03`/`W6-07` sắp cần nó để bỏ chữ "model-reviewed".
+
+
+---
+
+## Phiên 2026-09-07 (22) · `W6-06` — security pass
+
+**Xong**: `W6-06`. Chi phí **$0** (không lời gọi model nào). Báo cáo:
+`reports/tasks/security-final.md`.
+
+Đặt **sau** `W6-01` để soi cả bề mặt mới (trang tĩnh, proxy `/admin/ingest`,
+trường `content` trong khung SSE) và **trước** `W6-02` — thứ tự đã đề nghị từ
+phiên trước, và nó trả đúng thứ đã hứa: §8 của báo cáo là một danh sách phơi
+sáng dùng được ngay cho `W6-02`.
+
+### ⭐⭐ Bộ che log nói dối về chính nó
+
+Docstring của `RedactingFilter` viết, như một **lý lẽ biện minh** cho việc gắn
+filter lên handler:
+
+> *"`httpx` log URL kèm query string, **một `logger.exception` in nguyên payload
+> của provider**, và không ai nhớ gọi `redact_pii()` ở dòng log thứ 300."*
+
+Câu hỏi tự nhiên: lời hứa ấy có đúng không? Cách duy nhất trả lời là cho một
+dòng log đi hết đường thật — logger → filter → formatter → stream — rồi nhìn cái
+ra tới stream.
+
+Cùng một địa chỉ email: **che** khi nó nằm ở `msg`, **lọt nguyên vẹn** khi nó
+nằm trong traceback. `logger.exception("…")` đặt câu literal vào `record.msg`,
+còn nguyên văn lỗi đi vào `record.exc_info` — một **tuple**, nên vòng lặp
+`__dict__` (chỉ đụng `str`) bước qua nó.
+
+Và lỗ thứ hai ở cùng chỗ: `redact_pii` biết email/sđt/cccd/thẻ và **không biết
+mặt bí mật nào cả**, nên `Authorization: Bearer rag_…` ra thẳng stream.
+
+Đó là `AU-09` nhìn từ một tầng thấp hơn. Audit đề xuất chà `Bearer` ở **một**
+chỗ gọi (`openai_compat`); số đo nói vá một chỗ gọi là đóng một cửa trong nhiều
+cửa cùng mở — và cửa tiếp theo sẽ do một thư viện bên thứ ba mở. Bảng nhận dạng
+credential vì thế dời từ `pipeline/indexing/job_bundle.py` xuống
+`packages/rag_core/credentials.py`, **một bảng, hai người dùng**.
+
+⚠️ Nhánh chứng của probe phải chép **nguyên** hành vi cũ. Bản đầu chỉ che
+`record.msg` và vì thế tính luôn `record.args` vào phần "bản vá cứu được" —
+phóng đại đúng một bản ghi.
+
+### ⭐⭐ Một lỗ không có trong danh mục audit nào
+
+Rơi ra từ lượt chấm tiêm lỗi: chèn **một dấu phụ** vào giữa từ khoá né được
+**cả 11** luật tiêm.
+
+| payload | luật khớp, trước `W6-06` |
+|---|---|
+| `ign` + ZERO WIDTH SPACE + `ore all previous instructions` | `override_instructions_en` |
+| `ign` + COMBINING ACUTE + `ore all previous instructions` | **`()`** |
+
+Bảng gập đã xử ký tự zero-width từ `W4-12` với đúng lý lẽ *"chèn vào giữa từ
+khoá là cách rẻ nhất để né regex"*. Dấu phụ là **cùng một trò** với một lớp ký
+tự khác — và nó không phải bài toán confusable: dấu phụ ấy hợp lệ, nó chỉ ở sai
+chỗ.
+
+⚠️ Không sửa được bằng cách bỏ dấu trong `normalise_for_scan`: **luật tiếng Việt
+được viết có dấu** (`bỏ qua`, `phía trên`), nên một bản bỏ dấu duy nhất giết
+đúng nửa bộ luật. `scan_injection` so **hai** biến thể rồi hợp kết quả. Dương
+tính giả thêm vào trên 19.744 chunk thật: **0**.
+
+### ⭐⭐ `TD-52` — nợ đòi một bảng đầy đủ, số đo nói bảng là công cụ sai
+
+Nợ ghi: *"dùng bảng confusables chuẩn của Unicode (`confusable_homoglyphs`)"*.
+Đo trước khi thêm một phụ thuộc runtime vào `rag_core`:
+
+| cơ chế | bắt được (62 phép thay một chữ của `ignore`) |
+|---|---|
+| bảng gập hiện tại | **2 / 62 (3,2 %)** |
+| luật **trộn hệ chữ** | **62 / 62 (100 %)** |
+
+Bảng đang bỏ lọt 97 % — nợ nghiêm trọng hơn hẳn lời nó tự mô tả. Nhưng một bảng
+đầy đủ hơn vẫn **không bao giờ đóng được**: Unicode thêm ký tự mỗi năm, mỗi cái
+là một lỗ im lặng tới lần nâng cấp sau. Cái đóng được là **hình dạng** của phép
+tấn công: một từ Latin bị chèn ký tự lạ thì **trộn hệ chữ**, đúng với cả ký tự
+chưa ai đặt ra.
+
+Dương tính giả **16/19.744 = 0,081 %** (ngưỡng `P1` của `W4-12` là 0,3 %),
+169 µs/chunk. ⚠️ **Cả 14 ca của luật mới đều là biến công thức** (`ΔTC`, `εij`,
+`μg`, `βPTAij`) — corpus là báo cáo kinh tế lượng, và một biến Hy Lạp cạnh chữ
+Latin *đúng là* trộn hệ chữ. Chấp nhận vì cờ chỉ **gắn nhãn** chứ không bỏ chunk.
+
+⚠️ **Mẫu số cũng là một giả thuyết.** Lượt đầu cho 85 % vì bộ sinh mẫu lọc theo
+**tên** Unicode nên kéo vào `COMBINING LATIN SMALL LETTER E` (một chữ e tí xíu
+*phía trên* chữ bên cạnh) và `PARENTHESIZED LATIN SMALL LETTER E` (`(e)`). Không
+cái nào lừa được mắt người, tức không cái nào là một phép tấn công. Tôi suýt ghi
+con số 85 % vào báo cáo.
+
+⚠️ Phần dư có thật, và ở đó một bảng **mới là công cụ đúng**: ký tự nhìn giống
+Latin **và bản thân là** Latin (`ɡ ı ɔ ᴏ`) — tập này **đếm được**, khác tập
+xuyên-hệ-chữ. Thêm 27 mục.
+
+### ⭐⭐ `AU-10` — quy ước triển khai thành bất biến của mã
+
+`AU-10` ghi: *"Giảm nhẹ hiện tại: bind `127.0.0.1`, Docker không expose."* Cả
+hai đúng, và cả hai nằm **ngoài mã**: một cờ dòng lệnh và một dòng YAML. Một
+`--host 0.0.0.0` gõ vội xoá sạch chúng, không để lại gì trong diff.
+
+`guard`: có `INGEST_API_TOKEN` ⇒ đòi token (so bằng `hmac.compare_digest`);
+không có ⇒ **chỉ loopback**. Máy dev không phải cấu hình gì thêm, mà một lần
+bind ra ngoài cũng không mở được cửa.
+
+⚠️ **14 bài integration đỏ cùng lúc** khi bản vá vào — `TestClient` mặc định host
+`"testclient"`, **không** phải loopback. Đó là bằng chứng nó chặn thật; test giờ
+phải khai `client=("127.0.0.1", …)`, tức phải nói ra mình gọi từ đâu.
+
+### ⚠️ Một giả thuyết của tôi bị phép đo bác bỏ
+
+`SEC-03`: tôi viết ra rằng `%2e%2e%2f%2e%2e%2f…` cho phép gọi tới đường dẫn tuỳ
+ý trên dịch vụ ingest. Đo trên router thật thì **sai** — mọi thứ mang `%2f` bị
+chặn ở tầng định tuyến, handler không bao giờ thấy.
+
+Cái thật sự tới được: lùi **một** đoạn (`..` → URL đi ra thành `/`) và **tiêm
+query string** (`abc?x=1`), cộng một `httpx.InvalidURL` — lớp này **không** kế
+thừa `httpx.HTTPError` nên nó xuyên qua `except` và thành 500. Severity hạ từ
+cao xuống **vừa**, và điều đó nằm trong báo cáo chứ không bị lặng lẽ sửa.
+
+### Những nợ còn lại
+
+**`TD-58`**: nợ ghi 5 khoá, thực tế **11** — nó lớn lên và không ai thấy, vì
+chưa có đường liệt kê. Gồm hai khoá `rpm=100000` do `W6-05` cấp cho load test,
+nằm trong kho production. Dọn còn **3**. ⚠️⚠️ Thu hồi **chưa có hiệu lực tới khi
+restart**, và CLI **in ra** điều đó — một người vận hành vừa xoá một khoá bị lộ
+và tin rằng mình đã xong là tình huống tệ hơn cả việc không có lệnh thu hồi.
+
+**`TD-83`**: nửa *quản lý secret* đã đóng (`ci.yml` không đọc secret nào và giờ
+khai `permissions: contents: read`; không workflow nào dùng `pull_request_target`;
+có test đọc file workflow thật). Nửa "smoke tầng sinh" **không** đóng được, với
+một lý do **mới**: job `full-eval` của `nightly.yml` đang bị gác sau
+`vars.NIGHTLY_GPU_RUNNER == 'on'` — chưa bật. Nối vào đó là nối vào một job không
+chạy, tức một cổng trông như có mà không gác gì.
+
+### Tiêm lỗi: 32/32 đỏ sau ba lượt — và hai lỗi thật trong chính bản vá
+
+| lượt | đỏ | sống |
+|---|---|---|
+| 1 | 20/30 | 10 |
+| 2 | 27/30 | 3 |
+| 3 | **32/32** | 0 |
+
+Bốn lỗ test: bộ chấm **bỏ sót cả tầng integration** (3 phép tiêm phân trang
+sống) · test tham số hoá theo `SECRET_PATTERNS` nên **xoá một luật thì ca thử
+của nó cũng biến mất khỏi tham số hoá** · một mẫu thử chạm **hai** luật nên
+chúng che cho nhau · nới `PUBLIC_PATHS` không bị bắt vì mọi phép kiểm khác đọc
+chính nó làm chuẩn.
+
+⚠️ Và **hai lỗi thật trong bản vá của tôi**, cả hai đều là mã trông như đang làm
+việc: `keep` (giữ nhãn trong log) là **mã chết** vì `platform_api_key` khớp
+trước `bearer_token` — bài test đi qua *vì một lý do khác hẳn lý do nó tin*; và
+`record.exc_text` đặt **trước** vòng lặp `__dict__` thì nó được che nhờ vòng lặp
+ấy chứ không nhờ dòng của chính nó. Cộng một dòng `normalize("NFC", …)` mà phép
+tiêm chứng minh **không thể** khác kết quả — xoá, vì giữ một dòng không chứng
+minh được là để lại cho người sau một câu hỏi không có đáp án.
+
+### Đo cuối
+
+**72 test mới** · **2 501 xanh** bộ mặc định (3 skip) · **313 xanh** integration ·
+ruff / mypy / `mypy --platform linux` sạch · **32/32** tiêm đỏ · **$0**.
+
+### Việc tiếp theo
+
+`W6` còn **5/8**: `W6-02` demo HF Spaces · `W6-03` README · `W6-04` docs ·
+`W6-07`/`W6-08` CV.
+
+**`W6-02` là bước kế**, và §8 của báo cáo là danh sách phải làm trước khi bấm
+nút: gần như mọi hàng rào hạ tầng hôm nay là `127.0.0.1`. ⚠️ Kèm một cảnh báo đã
+ghi từ `TD-72`: HF Spaces tier miễn phí *ngủ* rồi cold-start, và khởi động của ta
+đã là 28 s — rủi ro thật cho câu đầu của `G6` ("trong 30 giây").
+
+Vẫn chờ bạn: **SLO TTFT** (⏳ trong `G2`) · **`NEW-11`** (quyết định về upload) ·
+**`TD-13`** (điều kiện duy nhất còn thiếu của `G1`, và `W6-03`/`W6-07` sắp cần nó
+để bỏ chữ "model-reviewed").

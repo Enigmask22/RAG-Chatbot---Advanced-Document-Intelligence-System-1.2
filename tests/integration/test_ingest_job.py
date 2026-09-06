@@ -140,8 +140,14 @@ def client(workspace: tuple[str, Path]) -> Iterator[TestClient]:
     Không khai phụ thuộc thì pytest dựng `client` trước `workspace` (theo thứ tự
     tham số), app nối vào hàng đợi **mặc định**, và mọi job nằm im ở `queued` —
     một kiểu hỏng không hề giống nguyên nhân của nó.
+
+    ⭐⭐ `W6-06` / `AU-10`: `client=` phải khai tường minh. Mặc định của
+    `TestClient` là host `"testclient"` — **không** phải loopback — nên từ khi
+    `guard` tồn tại, mọi test ở đây trả 403 cho tới khi nó nói ra mình gọi từ
+    đâu. Đó là hành vi đúng, và việc 14 bài đỏ cùng lúc là bằng chứng rằng bản
+    vá thật sự chặn chứ không chỉ trông giống chặn.
     """
-    with TestClient(create_app()) as running:
+    with TestClient(create_app(), client=("127.0.0.1", 50000)) as running:
         yield running
 
 
@@ -393,7 +399,8 @@ class TestTrangThaiSongONgoaiTienTrinh:
         test chỉ dùng một client, nên phải dựng hẳn một app thứ hai."""
         name, _ = workspace
         job_id = client.post("/ingest", json={"config": name}).json()["job_id"]
-        with TestClient(create_app()) as reborn:
+        # `client=` như fixture — xem lý do ở đó (`AU-10`).
+        with TestClient(create_app(), client=("127.0.0.1", 50001)) as reborn:
             assert reborn.get(f"/ingest/{job_id}").json()["job_id"] == job_id
 
 

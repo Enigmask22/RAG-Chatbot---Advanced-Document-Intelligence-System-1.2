@@ -1,0 +1,27 @@
+{
+  "task": "W6-06",
+  "what": "một dòng log đi hết đường thật thì còn rò gì",
+  "records_per_arm": 3,
+  "control": {
+    "what": "bản trước W6-06 — msg+args+__dict__, che PII thôi, không phủ exc_info",
+    "leaks": {
+      "email": [
+        2
+      ],
+      "platform_key": [
+        3
+      ],
+      "provider_key": [
+        2
+      ]
+    }
+  },
+  "patched": {
+    "what": "RedactingFilter hiện tại — phủ cả exc_info và credential",
+    "leaks": {
+      "email": [],
+      "platform_key": [],
+      "provider_key": []
+    }
+  }
+}

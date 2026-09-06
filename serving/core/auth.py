@@ -57,8 +57,10 @@ __all__ = [
     "CrossTenantError",
     "Principal",
     "digest_of",
+    "load_entries",
     "main",
     "mint",
+    "revoke",
     "tenant_filter",
 ]
 
@@ -74,6 +76,11 @@ Một key của tenant gọi được `POST /admin/bundle/reload` nghĩa là kh�
 
 _KEY_BYTES = 32
 _KEY_PREFIX = "rag_"
+
+_DEFAULT_STORE = "secrets/api-keys.json"
+"""Một hằng cho cả ba lệnh con. `TD-58` thêm `list`/`revoke`, và ba bản sao của
+cùng một đường dẫn mặc định là ba chỗ để lệch nhau — lệch ở đây nghĩa là `revoke`
+báo "đã xoá" trên một file mà server không đọc."""
 
 
 class CrossTenantError(PermissionError):
@@ -172,6 +179,39 @@ def mint(
     return raw_key
 
 
+def load_entries(path: Path) -> dict[str, Any]:
+    """Nội dung thô của kho khoá. `{}` nếu chưa có file."""
+    if not path.is_file():
+        return {}
+    raw: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    return raw
+
+
+def revoke(path: Path, *, key_id: str) -> int:
+    """Xoá mọi mục có `key_id` ấy. Trả về số mục đã xoá — `TD-58`.
+
+    ## ⭐⭐ Thu hồi theo `key_id`, không theo digest
+
+    Digest là thứ **không ai cầm**: người vận hành có key thô (thì đã không cần
+    thu hồi) hoặc chỉ có dòng log. Và dòng log cố ý chỉ mang `key_id` — xem
+    `key_hint`. Bắt họ tự băm một key để xoá nó là bắt họ đi tìm lại đúng cái bí
+    mật mà quy trình này tồn tại để loại bỏ.
+
+    ⚠️⚠️ **Thu hồi chưa có hiệu lực cho tới khi server khởi động lại.**
+    `ApiKeyStore.load` chạy **một lần** lúc khởi động (`W4-04`), nên hàm này sửa
+    đĩa chứ không sửa tiến trình đang chạy. Điều đó phải nằm trong lời in ra của
+    CLI, không chỉ trong docstring: một người vận hành vừa xoá một khoá bị lộ và
+    tin rằng mình đã xong là tình huống tệ hơn cả việc không có lệnh thu hồi.
+    """
+    entries = load_entries(path)
+    doomed = [digest for digest, spec in entries.items() if spec.get("key_id") == key_id]
+    for digest in doomed:
+        del entries[digest]
+    if doomed:
+        path.write_text(json.dumps(entries, indent=2, ensure_ascii=False), encoding="utf-8")
+    return len(doomed)
+
+
 def tenant_filter(principal: Principal, requested: MetadataFilter | None = None) -> MetadataFilter:
     """Filter cho một request, với `tenant_id` **luôn** lấy từ token.
 
@@ -204,7 +244,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # pragma: no cover - CLI m�
     sub = parser.add_subparsers(dest="cmd", required=True)
     new = sub.add_parser("mint", help="Sinh key mới. In ra ĐÚNG MỘT LẦN.")
     new.add_argument("--tenant", required=True)
-    new.add_argument("--file", type=Path, default=Path("secrets/api-keys.json"))
+    new.add_argument("--file", type=Path, default=Path(_DEFAULT_STORE))
     new.add_argument("--scope", action="append", default=[], help=f"vd. --scope {ADMIN_SCOPE}")
     new.add_argument("--rpm", type=int, default=60)
     new.add_argument(
@@ -216,7 +256,41 @@ def main(argv: Sequence[str] | None = None) -> int:  # pragma: no cover - CLI m�
             "trình hạ tầng đọc key từ đĩa (Prometheus `credentials_file`)."
         ),
     )
+    ls = sub.add_parser("list", help="Liệt kê khoá đang có. KHÔNG in được key thô.")
+    ls.add_argument("--file", type=Path, default=Path(_DEFAULT_STORE))
+
+    rm = sub.add_parser("revoke", help="Xoá một khoá theo key_id. Cần KHỞI ĐỘNG LẠI server.")
+    rm.add_argument("--key-id", required=True)
+    rm.add_argument("--file", type=Path, default=Path(_DEFAULT_STORE))
+
     args = parser.parse_args(argv)
+
+    if args.cmd == "list":
+        entries = load_entries(args.file)
+        if not entries:
+            print(f"kho {args.file} rỗng hoặc chưa tồn tại")
+            return 0
+        print(f"{len(entries)} khoá trong {args.file}\n")
+        print(f"{'key_id':<20} {'tenant':<12} {'rpm':>5}  scopes")
+        for digest, spec in entries.items():
+            key_id = spec.get("key_id", digest[:8])
+            scopes = ",".join(spec.get("scopes", ())) or "-"
+            rpm = spec.get("rate_limit_per_minute", 60)
+            print(f"{key_id:<20} {spec['tenant_id']:<12} {rpm:>5}  {scopes}")
+        return 0
+
+    if args.cmd == "revoke":
+        removed = revoke(args.file, key_id=args.key_id)
+        if removed == 0:
+            print(f"không có khoá nào mang key_id {args.key_id!r} trong {args.file}")
+            return 1
+        print(f"đã xoá {removed} mục khỏi {args.file}")
+        # ⚠️ In ra, không chỉ ghi docstring: xem `revoke`.
+        print(
+            "\n⚠️  CHƯA CÓ HIỆU LỰC. Kho khoá chỉ được nạp lúc khởi động, nên khoá vừa\n"
+            "    xoá VẪN dùng được cho tới khi tiến trình API khởi động lại."
+        )
+        return 0
 
     raw_key = mint(
         args.file, tenant_id=args.tenant, scopes=args.scope, rate_limit_per_minute=args.rpm

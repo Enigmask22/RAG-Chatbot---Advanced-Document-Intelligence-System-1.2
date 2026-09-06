@@ -33,6 +33,13 @@ import tarfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# ⭐ `W6-06` dời bảng nhận dạng credential xuống `rag_core`: bộ che log cần
+# **cùng** tri thức này, và một bản sao thứ hai là bản sẽ không được cập nhật
+# khi ai đó thêm nhà cung cấp mới — hỏng theo hướng *báo an toàn* (họ `AU-12`).
+# ⚠️ `scan_text` quét TỪNG DÒNG, nên mọi luật trong bảng phải khớp trong phạm
+# vi một dòng; bảng chung giữ đúng ràng buộc ấy, xem docstring bên đó.
+from rag_core.credentials import SECRET_PATTERNS
+
 __all__ = [
     "BUNDLE_EXCLUDE",
     "FORBIDDEN_NAMES",
@@ -48,21 +55,6 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-
-SECRET_PATTERNS: dict[str, re.Pattern[str]] = {
-    # DeepSeek + OpenAI + OpenRouter đều dùng tiền tố `sk-`.
-    "openai_style_key": re.compile(r"\bsk-(?:or-v1-)?[A-Za-z0-9_-]{16,}"),
-    "hf_token": re.compile(r"\bhf_[A-Za-z0-9]{30,}"),
-    "github_pat": re.compile(r"\b(?:ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})"),
-    "aws_access_key": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
-    "private_key_block": re.compile(r"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----"),
-    # Gán tường minh với giá trị đủ dài để không dính vào `KEY=` rỗng của
-    # `.env.example` hay `api_key=api_key` trong code.
-    "assigned_secret": re.compile(
-        r"(?i)\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|secret[_-]?key|password)"
-        r"\s*[:=]\s*[\"']?[A-Za-z0-9/_+=-]{20,}"
-    ),
-}
 
 FORBIDDEN_NAMES: tuple[re.Pattern[str], ...] = (
     re.compile(r"(^|/)\.env(\.|$)"),

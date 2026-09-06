@@ -60,7 +60,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from rag_core.generation import (
@@ -87,6 +87,7 @@ from serving.db.models import Conversation, Message
 __all__ = [
     "CHAT_NO_RETRIEVAL",
     "CHAT_SYSTEM",
+    "HISTORY_PAGE",
     "MAX_HISTORY_MESSAGES",
     "NO_RETRIEVAL_SYSTEM_PROMPT",
     "SYSTEM_PROMPT",
@@ -95,6 +96,7 @@ __all__ = [
     "ChatTurn",
     "ConversationNotFound",
     "GenerationUnavailable",
+    "HistoryCursorNotFound",
     "prepare_ms_of",
 ]
 
@@ -269,6 +271,16 @@ _PENDING: set[asyncio.Task[None]] = set()
 bị GC dọn giữa chừng. Tài liệu chuẩn nói đúng điều này, và triệu chứng của việc
 bỏ qua nó là những lần ghi biến mất ngẫu nhiên dưới tải.
 """
+
+
+class HistoryCursorNotFound(LookupError):
+    """Con trỏ phân trang trỏ vào một message không có trong hội thoại này.
+
+    ⭐ `AU-08`: tách khỏi `ConversationNotFound` vì hai lỗi này bảo người gọi
+    làm hai việc khác nhau — một cái là "hội thoại không tồn tại, đừng hỏi
+    nữa", cái kia là "con trỏ của bạn cũ rồi, đọc lại từ đầu". Gộp làm một
+    404 chung thì client vòng lặp phân trang không phân biệt được.
+    """
 
 
 class ConversationNotFound(LookupError):
@@ -1382,22 +1394,63 @@ class ChatService:
             )
 
 
+HISTORY_PAGE = 50
+"""Số message mặc định cho một trang lịch sử — `AU-08`, vá ở `W6-06`.
+
+Không phải `MAX_HISTORY_MESSAGES` (10): đó là ngân sách **prompt**, còn đây là
+ngân sách **payload**. Trộn hai con số ấy làm một là buộc người đọc lại hội thoại
+chỉ thấy đúng phần mà model nhìn thấy.
+"""
+
+
 async def load_history(
-    sessions: async_sessionmaker[AsyncSession], principal: Principal, conversation_id: str
+    sessions: async_sessionmaker[AsyncSession],
+    principal: Principal,
+    conversation_id: str,
+    *,
+    limit: int = HISTORY_PAGE,
+    after: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Đọc lại một hội thoại — thứ chứng minh câu DoD "sống sót qua restart"."""
+    """Đọc lại một hội thoại — thứ chứng minh câu DoD "sống sót qua restart".
+
+    ## ⭐⭐ `AU-08`: con trỏ theo **id**, không theo offset
+
+    `OFFSET n` phải đếm qua n hàng mỗi lần, và tệ hơn: một hàng mới chèn vào giữa
+    hai lần gọi làm mọi trang sau đó **trượt đi một** — người đọc mất đúng một
+    message và không có gì nói ra. Ở đây hàng mới *luôn* được chèn (task nền ghi
+    câu trả lời sau khi stream xong), nên đó không phải một ca hiếm.
+
+    `after` là `Message.id` của phần tử cuối trang trước; thứ tự sắp theo
+    `(created_at, id)` nên khoá so sánh cũng phải là cặp ấy — so mỗi `created_at`
+    thì hai message cùng mốc mili giây làm mất một cái.
+
+    ⚠️ `after` trỏ vào một message **không tồn tại** (hoặc của hội thoại khác) là
+    `ValueError`, không phải một trang rỗng: trang rỗng đọc y hệt "hết lịch sử".
+    """
     async with atenant_session(sessions, principal.tenant_id) as session:
         exists = await session.scalar(
             select(Conversation.id).where(Conversation.id == conversation_id)
         )
         if exists is None:
             raise ConversationNotFound(f"không có hội thoại {conversation_id!r}")
-        rows: Sequence[Message] = (
-            await session.scalars(
-                select(Message)
-                .where(Message.conversation_id == conversation_id)
-                .order_by(Message.created_at, Message.id)
+        query = select(Message).where(Message.conversation_id == conversation_id)
+        if after is not None:
+            anchor = (
+                await session.execute(
+                    select(Message.created_at, Message.id).where(
+                        Message.id == after, Message.conversation_id == conversation_id
+                    )
+                )
+            ).one_or_none()
+            if anchor is None:
+                raise HistoryCursorNotFound(
+                    f"không có message {after!r} trong hội thoại {conversation_id!r}"
+                )
+            query = query.where(
+                tuple_(Message.created_at, Message.id) > tuple_(anchor[0], anchor[1])
             )
+        rows: Sequence[Message] = (
+            await session.scalars(query.order_by(Message.created_at, Message.id).limit(limit))
         ).all()
     return [
         {

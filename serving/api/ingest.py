@@ -19,11 +19,16 @@ nào của `W6` đã lấy.
 
 ## ⭐ Vì sao **proxy**, không để trình duyệt gọi thẳng cổng 8001
 
-`AU-10`: API ingestion **không có auth**, và biện pháp giảm nhẹ hiện tại là bind
-`127.0.0.1`. Cho UI gọi thẳng nó sẽ (a) buộc mở CORS trên một dịch vụ không xác
-thực, (b) buộc nó rời khỏi loopback. Đi vòng qua `/admin/ingest` thì tầng auth
-của `W4-04` áp dụng nguyên vẹn — `ADMIN_PREFIX` che theo **tiền tố đường dẫn**,
-nên route này được bảo vệ vì nó *ở trong* `/admin`, không vì ai đó nhớ.
+Cho UI gọi thẳng nó sẽ (a) buộc mở CORS trên một dịch vụ điều khiển pipeline,
+(b) buộc nó rời khỏi loopback. Đi vòng qua `/admin/ingest` thì tầng auth của
+`W4-04` áp dụng nguyên vẹn — `ADMIN_PREFIX` che theo **tiền tố đường dẫn**, nên
+route này được bảo vệ vì nó *ở trong* `/admin`, không vì ai đó nhớ.
+
+⚠️ **`W6-06` cập nhật `AU-10`.** Dòng cũ ở đây viết "API ingestion không có
+auth" — đúng lúc viết, sai từ `W6-06`: dịch vụ ấy giờ đòi `INGEST_API_TOKEN`
+khi token được cấu hình, và **chỉ nhận loopback** khi không. Proxy này gửi
+token đi (`_auth_headers`). Hai tầng vẫn cần cả hai: tầng ngoài quyết định *ai
+là người dùng*, tầng trong quyết định *dịch vụ nào được gọi tôi*.
 
 ⚠️ Mặc định **tắt** (`INGEST_API_URL` rỗng ⇒ 503 kèm lời giải thích). Một bề
 mặt điều khiển pipeline mở sẵn ở mọi lần deploy là thứ không ai xin.
@@ -32,6 +37,7 @@ mặt điều khiển pipeline mở sẵn ở mọi lần deploy là thứ khôn
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -67,7 +73,14 @@ class StartRequest(BaseModel):
     """Tên config, **không** phải đường dẫn — `pipeline.ingest.schemas` từ chối
     mọi thứ có dấu phân cách, và giới hạn ấy phải giữ nguyên khi đi qua proxy."""
 
-    doc_ids: tuple[str, ...] = ()
+    doc_ids: tuple[Annotated[str, Field(min_length=1, max_length=200)], ...] = Field(
+        default=(), max_length=1000
+    )
+    """⚠️ `W6-06`: có trần. Bản đầu không giới hạn gì — một thân request vài chục
+    MB toàn `doc_ids` đi thẳng sang dịch vụ ingest, và dịch vụ ấy không có auth
+    để tự bảo vệ (`AU-10`). 1000 là trên mức mọi lần dùng thật (`W3-07` re-index
+    theo lô vài chục tài liệu) và dưới mức gây hại."""
+
     recreate: bool = False
 
 
@@ -82,12 +95,21 @@ def _base_url(settings: Settings) -> str:
     return url
 
 
-async def _call(method: str, url: str, payload: dict[str, Any] | None = None) -> Any:
+def _auth_headers(settings: Settings) -> dict[str, str]:
+    """Token dịch vụ, nếu có — `AU-10`. Không có thì dịch vụ đích tự giới hạn ở
+    loopback, xem `pipeline.ingest.app.guard`."""
+    token = settings.ingest_api_token
+    return {"Authorization": f"Bearer {token.get_secret_value()}"} if token else {}
+
+
+async def _call(
+    method: str, url: str, payload: dict[str, Any] | None = None, *, headers: dict[str, str]
+) -> Any:
     import httpx
 
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
-            response = await client.request(method, url, json=payload)
+            response = await client.request(method, url, json=payload, headers=headers)
     except httpx.HTTPError as exc:
         # ⚠️ **Không** dội nguyên văn lỗi ra client: `AU-03` (`NEW-08`) đã vá
         # đúng chế độ này ở đường chat — thân lỗi của một dịch vụ nội bộ mang
@@ -107,10 +129,53 @@ async def start(body: StartRequest, settings: SettingsDep) -> Any:
         "POST",
         f"{_base_url(settings)}/ingest",
         {"config": body.config, "doc_ids": list(body.doc_ids), "recreate": body.recreate},
+        headers=_auth_headers(settings),
     )
+
+
+JOB_ID = re.compile(r"\A[A-Za-z0-9_-]{1,64}\Z")
+"""⭐⭐ `W6-06`: `job_id` đi thẳng vào một URL, nên nó là **đầu vào của một lời
+gọi mạng**, không phải một chuỗi hiển thị.
+
+⚠️⚠️ **Giả thuyết đầu của tôi ở đây SAI, và phép đo bác bỏ nó.** Tôi viết rằng
+`%2e%2e%2f%2e%2e%2f…` cho phép đi tới đường dẫn tuỳ ý trên dịch vụ ingest. Đo
+trên router thật: **không**. Mọi thứ mang `%2f` bị chặn ở tầng định tuyến và
+handler không bao giờ thấy — tức traversal nhiều đoạn không tới được.
+
+Cái **thật sự** tới được handler, và URL nó tạo ra (base `http://ingest:8001`):
+
+| `job_id` | path đi ra | query đi ra |
+|---|---|---|
+| `%2e%2e` → `..` | `/` | — |
+| `abc%3Fx%3D1` → `abc?x=1` | `/ingest/abc` | **`x=1`** |
+| `x%00y` | *ném `httpx.InvalidURL`* | — |
+
+Nên mức độ đúng của nó là **vừa phải, không nghiêm trọng**: lùi được **một**
+đoạn đường dẫn, và tiêm được query string tuỳ ý vào một lời gọi tới dịch vụ nội
+bộ. Hôm nay `GET /ingest/{job_id}` không đọc query nào nên tác hại gần 0 — nhưng
+đó là một tính chất của *dịch vụ kia*, không phải một hàng rào ở đây, và nó đổi
+được bất cứ lúc nào mà file này không biết.
+
+⭐ Ca `\\x00` là một lỗi thứ hai, khác loại: `httpx.InvalidURL` **không** kế thừa
+`httpx.HTTPError`, nên nó xuyên qua `except` của `_call` và thành 500. Một phép
+kiểm ở đầu route đóng cả hai bằng một dòng.
+
+⚠️ Tập ký tự là **URL-safe**, không phải hex, dù id thật hôm nay là `uuid4().hex`.
+Hex chặt hơn mà **không an toàn hơn** — cả hai đều loại sạch `/ . ? # %` — đổi
+lại nó ghim proxy vào định dạng id của một dịch vụ khác. Chặn đúng thứ nguy
+hiểm, không chặn thêm cho có.
+
+⚠️ Kiểm ở **proxy**, không chỉ ở dịch vụ đích: đây là chỗ duy nhất còn biết rằng
+chuỗi này sắp thành URL. Dịch vụ đích nhìn thấy một đường dẫn đã bị viết lại và
+không còn cách nào biết nó từng là cái gì.
+"""
 
 
 @router.get("/{job_id}")
 async def progress(job_id: str, settings: SettingsDep) -> Any:
     """Tiến độ một job: `documents_done / documents_total`, `chunks_embedded`."""
-    return await _call("GET", f"{_base_url(settings)}/ingest/{job_id}")
+    if not JOB_ID.match(job_id):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "job_id không hợp lệ")
+    return await _call(
+        "GET", f"{_base_url(settings)}/ingest/{job_id}", headers=_auth_headers(settings)
+    )

@@ -19,16 +19,22 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, time, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from rag_core.llm import BudgetExceeded
 from rag_core.retrieval.filters import MetadataFilter
 from serving.api.security import principal_of
 from serving.api.sse import SSE_HEADERS, encode
 from serving.core.auth import CrossTenantError, Principal
-from serving.core.chat import ChatService, ConversationNotFound, GenerationUnavailable
+from serving.core.chat import (
+    HISTORY_PAGE,
+    ChatService,
+    ConversationNotFound,
+    GenerationUnavailable,
+    HistoryCursorNotFound,
+)
 from serving.core.chat import load_history as _load_history
 from serving.core.logging import current_request_id
 from serving.core.tracing import Trace
@@ -38,6 +44,13 @@ __all__ = ["router"]
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
+
+MAX_FILTER_VALUES = 100
+"""Trần số giá trị cho MỘT field của `filters` — xem `ChatRequest._bound_filter_lists`.
+
+100 chọn theo cách dùng thật: lọc theo `doc_type`/`lang` là vài giá trị, lọc theo
+`doc_id` cho một bộ tài liệu là vài chục. Trên mức ấy thì đó không còn là một câu
+hỏi của người dùng nữa."""
 
 
 def _seconds_to_utc_midnight() -> int:
@@ -74,6 +87,34 @@ class ChatRequest(BaseModel):
     filters: MetadataFilter | None = None
     """⚠️ `tenant_id` mà client gửi ở đây **không** được tin: `tenant_filter()`
     ghi đè nó bằng tenant của token, và từ chối nếu hai bên khác nhau."""
+
+    @field_validator("filters")
+    @classmethod
+    def _bound_filter_lists(cls, value: MetadataFilter | None) -> MetadataFilter | None:
+        """⭐⭐ `W6-06`: mọi field của `MetadataFilter` nhận `list[str]` **không
+        giới hạn độ dài**, và `message` bị chặn ở 8000 ký tự khiến chỗ ấy trông
+        như đã được rào.
+
+        `{"filters": {"chunk_id": [… 200.000 mục …]}}` là một thân request vài
+        chục MB, được đọc trọn vào bộ nhớ trước khi Pydantic nhìn tới nó, rồi
+        thành một `MatchAny` khổng lồ gửi sang Qdrant. Hạn mức của `W4-04` đếm
+        **số request**, nên nó không thấy gì cả — cùng lý lẽ đã đặt trần 8000 ký
+        tự cho `message`, chỉ là trần ấy chưa phủ trục thứ hai.
+
+        ⚠️ Chặn ở **đây**, không ở `MetadataFilter`: `rag_core` phục vụ cả đường
+        eval, nơi một danh sách dài là hợp lệ (lọc theo cả một tập golden). Chỗ
+        phân biệt được "người gọi tin được hay không" là biên HTTP — đúng lý lẽ
+        `tenant_filter()` dùng để không nhận `tenant_id` từ người gọi.
+        """
+        if value is None:
+            return None
+        for name in ("chunk_id", "doc_id", "tenant_id", "doc_type", "lang"):
+            field = getattr(value, name)
+            if isinstance(field, list) and len(field) > MAX_FILTER_VALUES:
+                raise ValueError(
+                    f"filters.{name} có {len(field)} giá trị, trần là {MAX_FILTER_VALUES}"
+                )
+        return value
 
 
 @router.post("/chat")
@@ -215,18 +256,36 @@ def tracing_status(request: Request) -> dict[str, Any]:
 
 @router.get("/conversations/{conversation_id}")
 async def conversation(
-    conversation_id: str, service: ServiceDep, principal: PrincipalDep
+    conversation_id: str,
+    service: ServiceDep,
+    principal: PrincipalDep,
+    limit: Annotated[int, Query(ge=1, le=200)] = HISTORY_PAGE,
+    after: Annotated[str | None, Query(max_length=32)] = None,
 ) -> dict[str, Any]:
     """Đọc lại lịch sử — nửa thứ hai của DoD ("sống sót qua restart container").
 
-    Không có phân trang. Với `MAX_HISTORY_MESSAGES` = 10 ở đường ghi thì một hội
-    thoại thật vẫn dài hơn thế nhiều, nên đây là nợ chứ không phải một quyết
-    định: một hội thoại 500 lượt trả về một phản hồi vài MB.
+    ⭐ `AU-08` vá ở `W6-06`: có phân trang, con trỏ theo `Message.id`. Xem
+    `load_history` cho lý do không dùng `OFFSET`.
+
+    `next_after` khác `None` nghĩa là **còn** trang nữa. Suy ra từ việc trang này
+    đầy đúng `limit` — nên lần gọi cuối cùng của một vòng lặp phân trang có thể
+    trả về một trang rỗng. Đó là cái giá của việc không chạy thêm một `COUNT(*)`
+    trên mỗi trang, và nó được nói ra ở đây thay vì để client tự phát hiện.
     """
     if service.sessions is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "chưa cấu hình Postgres")
     try:
-        messages = await _load_history(service.sessions, principal, conversation_id)
+        messages = await _load_history(
+            service.sessions, principal, conversation_id, limit=limit, after=after
+        )
     except ConversationNotFound as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
-    return {"conversation_id": conversation_id, "messages": messages}
+    except HistoryCursorNotFound as exc:
+        # 422 chứ không 404: hội thoại **có** tồn tại, thứ sai là con trỏ client
+        # cầm. Một 404 ở đây bảo họ ngừng hỏi về một hội thoại vẫn đang sống.
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    return {
+        "conversation_id": conversation_id,
+        "messages": messages,
+        "next_after": messages[-1]["id"] if len(messages) == limit else None,
+    }

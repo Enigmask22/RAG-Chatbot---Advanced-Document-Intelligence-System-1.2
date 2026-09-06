@@ -1,15 +1,24 @@
 """Điều khiển bundle lúc đang chạy — `W4-03`, mở khoá lõi của `W4-02`.
 
-## 🔓 ⚠️ CHƯA CÓ XÁC THỰC
+## 🔒 Xác thực: có, và nó đến từ **tiền tố đường dẫn**
 
-Ba route dưới đây đổi được **hệ thống đang phục vụ production** và hiện **ai gọi
-cũng được**. Đó là món nợ đã ghi ở `W4-02` và nó phải đóng **cùng lúc** với
-`W4-04`, không phải sau: một route admin mở là thứ dễ quên nhất trong lúc còn
-đang thấy nó mỗi ngày.
+Ba route dưới đây đổi được **hệ thống đang phục vụ production**. Chúng nằm dưới
+`/admin/bundle`, nên `AuthMiddleware` (`W4-04`) đòi `ADMIN_SCOPE` cho cả ba —
+không phải vì file này khai gì, mà vì quy tắc là tiền tố. Một route admin thứ tư
+thêm vào đây được bảo vệ ngay khi nó ra đời.
 
-Có một test ghim đúng lỗ hổng này (`test_admin_routes_are_still_open`). Nó sẽ đỏ
-khi `W4-04` gắn auth vào — cố ý: buộc phải xoá nó *một cách có ý thức*, chứ không
-để nó nằm im mãi mãi như một xác nhận rằng cửa mở là bình thường.
+⚠️⚠️ **Đoạn trên từng viết ngược lại, và `W6-06` bắt được.** Nguyên văn cũ:
+*"🔓 CHƯA CÓ XÁC THỰC … hiện ai gọi cũng được"*, kèm lời hứa rằng một test tên
+`test_admin_routes_are_still_open` sẽ đỏ khi `W4-04` gắn auth. `W4-04` đã gắn
+auth **và** đã xoá test ấy — nhưng không ai xoá đoạn văn. Nó sống thêm hai tuần
+như một tuyên bố sai về tình trạng bảo mật của chính file mình, ở đúng chỗ người
+đọc tin nhất.
+
+Bài học không phải "nhớ sửa docstring". Nó là: một dòng chữ mô tả **trạng thái**
+(khác với mô tả *ý định*) là một bản sao thứ hai của sự thật, và bản sao ấy
+không có gì bắt nó đồng bộ — cùng họ `AU-12`. Chỗ duy nhất trả lời được câu
+"route này có cần scope không" là `PUBLIC_PATHS` + `ADMIN_PREFIX`, và `W6-06`
+thêm một test đọc **bảng route thật** để so với chúng.
 
 ## Vì sao ba hàm này là `def` chứ không `async def`
 

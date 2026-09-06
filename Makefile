@@ -472,6 +472,14 @@ db-rev:  ## W4-05: sinh migration moi. M="mo ta"
 api-key:  ## W4-04: cấp API key mới. TENANT=acme [SCOPE=admin] [RPM=60]. In ra MỘT lần
 	$(PY) python -m serving.core.auth mint --tenant $(TENANT) $(if $(SCOPE),--scope $(SCOPE),) $(if $(RPM),--rpm $(RPM),)
 
+.PHONY: api-keys
+api-keys:  ## W6-06/TD-58: liệt kê khoá đang có (key_id, tenant, rpm, scope). KHÔNG in key thô
+	$(PY) python -m serving.core.auth list
+
+.PHONY: api-key-revoke
+api-key-revoke:  ## W6-06/TD-58: thu hồi một khoá. KEY_ID=public-884ac8. Cần khởi động lại API
+	$(PY) python -m serving.core.auth revoke --key-id $(KEY_ID)
+
 .PHONY: serve
 serve:  ## W4-03: chạy API serving (đọc BUNDLE_ROOT / BUNDLE_VERSION từ .env)
 # `python -m serving`, KHÔNG `uvicorn` trực tiếp (W4-06): trên Windows uvicorn

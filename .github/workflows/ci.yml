@@ -40,6 +40,23 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# ⭐⭐ `W6-06`: khai quyền TỐI THIỂU, tường minh.
+#
+# Không có khối này thì `GITHUB_TOKEN` nhận **quyền mặc định của repository** —
+# và mặc định ấy là một ô tick trong Settings, không phải một dòng trong repo:
+# nó có thể là read/write toàn bộ, nó đổi được mà không để lại commit nào, và
+# không có gì trong diff phản ánh việc đó. Workflow này chạy trên `pull_request`,
+# tức mọi step (gồm cả ba action bên thứ ba) thấy token ấy.
+#
+# CI này chỉ **đọc** mã và chạy test. `contents: read` là đúng nhu cầu, và giờ
+# nó là một dòng người review nhìn thấy được.
+#
+# ⚠️ `nightly.yml` cố ý khác: nó đúc bundle và mở PR promote, nên cần
+# `contents: write` + `pull-requests: write`. Nó chạy trên `schedule` +
+# `workflow_dispatch` — không trigger nào fork điều khiển được.
+permissions:
+  contents: read
+
 env:
   UV_VERSION: "0.9.11"
   # ⚠️ Ghim đúng bản ở máy đã đo. `uv` giải phụ thuộc, nên một bản khác có thể

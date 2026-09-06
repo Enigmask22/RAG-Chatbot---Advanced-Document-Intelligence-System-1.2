@@ -977,3 +977,66 @@ def test_an_answer_without_a_block_reports_absent_instead_of_pretending(
     citations = next(data for _, name, data in frames if name == "citations")
     assert citations["block"] == "absent"
     assert citations["citations"] == []
+
+
+@pytest.mark.integration
+def test_history_paginates_by_cursor_not_by_offset(database: Engine, workspace: Path) -> None:
+    """`AU-08` vá ở `W6-06`: `GET /conversations/{id}` từng trả **toàn bộ**.
+
+    ## ⭐⭐ Vì sao con trỏ theo id chứ không `OFFSET`
+
+    `OFFSET n` phải đếm qua n hàng mỗi lần, và tệ hơn: một hàng chèn vào giữa
+    hai lần gọi làm mọi trang sau **trượt đi một** — người đọc mất đúng một
+    message, im lặng. Ở đây hàng mới *luôn* được chèn (task nền ghi câu trả lời
+    sau khi stream xong), nên đó không phải một ca hiếm.
+
+    Test này ghép lại toàn bộ hội thoại bằng cách đi trang, rồi so với lượt đọc
+    một-phát: hai bản phải **giống hệt** về thứ tự lẫn nội dung.
+    """
+    proc, base = _serve(workspace, CHAT_TEST_DELTA_MS="1")
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            _, frames = _chat(client, base, "lượt 1")
+            conv = frames[0][2]["conversation_id"]
+            _wait_for_assistant(client, base, conv)
+            for n in range(2, 6):
+                _chat(client, base, f"lượt {n}", conversation_id=conv)
+                _wait_history_len(client, base, conv, 2 * n)
+
+            whole = client.get(f"{base}/conversations/{conv}", headers=_headers()).json()
+            assert len(whole["messages"]) == 10
+            assert whole["next_after"] is None, "trang chưa đầy thì không có trang sau"
+
+            pages, cursor, walked = 0, None, []
+            while True:
+                params = {"limit": 3, **({"after": cursor} if cursor else {})}
+                body = client.get(
+                    f"{base}/conversations/{conv}", headers=_headers(), params=params
+                ).json()
+                walked.extend(body["messages"])
+                pages += 1
+                cursor = body["next_after"]
+                if cursor is None:
+                    break
+                assert pages < 10, "vòng lặp phân trang không dừng"
+
+            assert [m["id"] for m in walked] == [m["id"] for m in whole["messages"]]
+            assert pages == 4, f"10 message chia trang 3 phải đi 4 lượt, đi {pages}"
+
+            # ⚠️ Con trỏ lạ là 422, KHÔNG phải một trang rỗng: trang rỗng đọc y
+            # hệt "hết lịch sử", và client vòng lặp sẽ dừng sớm mà tưởng xong.
+            bad = client.get(
+                f"{base}/conversations/{conv}", headers=_headers(), params={"after": "khongcothat"}
+            )
+            assert bad.status_code == 422
+
+            # Trần trên `limit` — một client xin 10.000 vẫn là một payload vài MB.
+            assert (
+                client.get(
+                    f"{base}/conversations/{conv}", headers=_headers(), params={"limit": 10_000}
+                ).status_code
+                == 422
+            )
+    finally:
+        proc.terminate()
+        proc.wait(timeout=20)
