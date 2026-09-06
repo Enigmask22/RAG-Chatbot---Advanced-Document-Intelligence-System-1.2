@@ -48,7 +48,7 @@ from rag_core.llm import (
     build_glm_provider,
 )
 from rag_core.settings import Settings, get_settings
-from serving.api import admin, chat, feedback, health
+from serving.api import admin, chat, feedback, health, ingest, ui
 from serving.api.middleware import RequestContextMiddleware
 from serving.api.security import AuthMiddleware
 from serving.core.auth import ApiKeyStore
@@ -134,6 +134,31 @@ def primary_generator(settings: Settings) -> str:
         "glm": DEFAULT_GLM_MODEL,
     }.get(settings.chat_provider, "")
     return f"{settings.chat_provider}:{model}" if model else ""
+
+
+def primary_endpoint(settings: Settings) -> str:
+    """Máy chủ nào đang phục vụ nhánh sinh chính — trục thứ tư của namespace cache.
+
+    ## ⭐⭐ Bắt được trên hệ đang chạy, `W6-01`
+
+    Trong lúc chụp ảnh màn hình cho giao diện: server trỏ vào DeepSeek **thật**
+    phát lại nguyên văn câu trả lời do stub của `W6-05` sinh ra, và khung `done`
+    khai `model: "deepseek-v4-flash"` — gọi tên một model chưa từng viết đoạn
+    text ấy. `primary_generator` mang `provider:model`, mà `DEEPSEEK_BASE_URL`
+    không nằm trong cả hai.
+
+    Cùng một cặp provider+slug trỏ vào hai máy chủ khác nhau là **hai bộ sinh
+    khác nhau** — và với một vLLM tự dựng thì slug còn do người dựng tự đặt.
+
+    ⚠️ Trả URL **thô**, không băm: namespace là thứ người vận hành đọc bằng mắt
+    khi đi tìm xem một câu trả lời cũ đến từ đâu, và một chuỗi hex ở đó biến một
+    câu hỏi trả lời được trong mười giây thành một buổi chiều.
+    """
+    return {
+        "deepseek": settings.deepseek_base_url,
+        "glm": settings.glm_base_url,
+        "openrouter": settings.openrouter_base_url,
+    }.get(settings.chat_provider, "")
 
 
 def _qdrant_check(registry: BundleRegistry) -> Check:
@@ -472,6 +497,7 @@ def create_app(
         lifespan=lifespan,
         docs_url="/docs",
     )
+    api.state.settings = resolved
     api.state.registry = registry
     api.state.probes = probe_factory(registry)
     api.state.metrics = metrics
@@ -487,6 +513,7 @@ def create_app(
         top_k=resolved.chat_top_k,
         max_tokens=resolved.chat_max_tokens,
         generator=primary_generator(resolved),
+        endpoint=primary_endpoint(resolved),
         # ⭐ `extra_body` để trống: từ `W4-08` mỗi `Route` mang bảng của nhà
         # cung cấp mình, và một giá trị ở đây sẽ ghi đè bảng ấy cho MỌI nhánh.
         understanding=build_understanding(resolved, llm),
@@ -509,6 +536,8 @@ def create_app(
     api.include_router(admin.router)
     api.include_router(chat.router)
     api.include_router(feedback.router)
+    api.include_router(ingest.router)
+    api.include_router(ui.router)
     return api
 
 

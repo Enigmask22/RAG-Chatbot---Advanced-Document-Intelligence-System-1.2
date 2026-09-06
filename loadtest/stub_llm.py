@@ -1,10 +1,10 @@
 """Một provider OpenAI-compat **giả** để đo trần thông lượng của chính hệ thống. `W6-05`.
 
-    uv run python -m loadtest.stub_llm --port 8099 --profile deepseek
+    uv run python -m loadtest.stub_llm --port 8199 --profile deepseek
 
 Rồi chạy server thật trỏ vào nó:
 
-    DEEPSEEK_BASE_URL=http://127.0.0.1:8099 DEEPSEEK_API_KEY=stub make serve
+    DEEPSEEK_BASE_URL=http://127.0.0.1:8199 DEEPSEEK_API_KEY=stub make serve
 
 ## ⭐⭐ Vì sao load test **không** được gọi DeepSeek thật
 
@@ -270,8 +270,12 @@ def main(argv: list[str] | None = None) -> int:
         prog="python -m loadtest.stub_llm",
         description="W6-05 — provider OpenAI-compat giả, hiệu chỉnh theo số đo W5-11",
     )
+    # ⚠️ 8199 chứ không 8099: `tests/integration/test_chat_stream.py` cấp cổng
+    # từ dải **8091–8119** cho các tiến trình uvicorn của nó. Một stub đang
+    # chạy ở 8099 làm đúng một bài trong dải ấy đỏ, với thông báo "uvicorn
+    # chết lúc khởi động" — không nhắc gì tới cổng. Mất một lượt chẩn đoán.
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8099)
+    parser.add_argument("--port", type=int, default=8199)
     parser.add_argument("--profile", choices=sorted(PROFILES), default="deepseek")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")

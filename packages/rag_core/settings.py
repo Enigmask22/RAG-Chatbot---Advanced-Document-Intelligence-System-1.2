@@ -104,6 +104,15 @@ class Settings(BaseSettings):
     lùi khỏi.
     """
 
+    ingest_api_url: str | None = None
+    """`W6-01`: URL của API ingestion (`W3-08`) để bảng tiến độ trong UI hỏi.
+
+    **Mặc định tắt.** `AU-10`: dịch vụ ấy không có auth và đang được che bằng
+    cách bind `127.0.0.1`; `serving/api/ingest.py` đi vòng qua `/admin/ingest`
+    để tầng auth của `W4-04` áp dụng được. Một bề mặt điều khiển pipeline mở
+    sẵn ở mọi lần deploy là thứ không ai xin — nên phải bật tường minh.
+    """
+
     bundle_warmup: bool = True
     """Chạy một lượt truy hồi giả ngay sau khi kích hoạt bundle (`TD-72`).
 

@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG Platform — hỏi tài liệu</title>
+<style>
+:root {
+  --bg: #fbfbfd; --panel: #ffffff; --ink: #14161a; --muted: #5c6370;
+  --line: #e3e5ea; --accent: #2f5fd0; --accent-soft: #e8eefc;
+  --ok: #1a7f4b; --warn: #a8620a; --bad: #b3261e; --mark: #fff3a3;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a; --panel: #1c1f25; --ink: #e9eaee; --muted: #9aa1ad;
+    --line: #2c3038; --accent: #7ea6ff; --accent-soft: #21304d;
+    --ok: #5fd39a; --warn: #e0a75a; --bad: #ff8a80; --mark: #5a4d12;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+header {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
+  position: sticky; top: 0; z-index: 5;
+}
+header h1 { font-size: 16px; margin: 0; font-weight: 650; }
+header .sub { color: var(--muted); font-size: 13px; }
+header .spacer { flex: 1; }
+main {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+  gap: 20px; max-width: 1240px; margin: 0 auto; padding: 20px;
+}
+@media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+.card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px;
+}
+.card + .card { margin-top: 16px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+     color: var(--muted); margin: 0 0 10px; font-weight: 650; }
+button {
+  font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); padding: 8px 14px;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+input, textarea {
+  font: inherit; width: 100%; padding: 9px 11px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+textarea { resize: vertical; min-height: 74px; }
+label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; }
+.row { display: flex; gap: 8px; align-items: center; }
+.turn { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 16px; }
+.turn:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+.question { font-weight: 600; margin-bottom: 10px; }
+.answer p { margin: 0 0 10px; }
+.answer ul { margin: 0 0 10px; padding-left: 22px; }
+.answer h3 { font-size: 15px; margin: 14px 0 6px; }
+.answer strong { font-weight: 650; }
+.cite {
+  display: inline; padding: 0 5px; margin: 0 1px; font-size: 12px; font-weight: 650;
+  border-radius: 5px; border: 1px solid var(--accent); background: var(--accent-soft);
+  color: var(--accent); line-height: 1.3;
+}
+.cite.bad { border-color: var(--bad); color: var(--bad); background: transparent; }
+.meta { color: var(--muted); font-size: 12.5px; margin-top: 10px;
+        display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.badge {
+  font-size: 11.5px; padding: 2px 7px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted);
+}
+.badge.ok { color: var(--ok); border-color: var(--ok); }
+.badge.warn { color: var(--warn); border-color: var(--warn); }
+.badge.bad { color: var(--bad); border-color: var(--bad); }
+.src { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; }
+.src > summary { cursor: pointer; padding: 9px 11px; font-size: 13.5px; }
+.src[data-active="1"] { border-color: var(--accent); }
+.src .body {
+  padding: 0 11px 11px; font-size: 13px; color: var(--muted);
+  max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+}
+.src .quote {
+  font-size: 12.5px; border-left: 3px solid var(--accent);
+  padding: 4px 9px; margin: 0 11px 9px; color: var(--ink);
+}
+mark { background: var(--mark); color: var(--ink); border-radius: 3px; }
+.note { font-size: 12.5px; color: var(--muted); }
+.error { color: var(--bad); font-size: 13.5px; }
+.progress { height: 7px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.progress > div { height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+.hidden { display: none !important; }
+footer { max-width: 1240px; margin: 0 auto; padding: 0 20px 28px; color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>RAG Platform</h1>
+  <span class="sub">hỏi 60 tài liệu World Bank về Việt Nam · trả lời có trích dẫn kiểm chứng được</span>
+  <span class="spacer"></span>
+  <span class="sub" id="bundle"></span>
+  <button id="keyToggle">Khoá API</button>
+</header>
+
+<main>
+  <div>
+    <div class="card hidden" id="keyCard">
+      <h2>Khoá API</h2>
+      <p class="note">API này cần khoá cho mọi lời gọi. Khoá được giữ trong
+        <code>localStorage</code> của trình duyệt và không rời khỏi máy bạn ngoài
+        header <code>Authorization</code> gửi tới chính máy chủ này.</p>
+      <div class="row">
+        <input id="keyInput" type="password" placeholder="rag_..." autocomplete="off">
+        <button class="primary" id="keySave">Lưu</button>
+        <button id="keyClear">Xoá</button>
+      </div>
+      <p class="note" id="keyHint" style="margin-bottom:0"></p>
+    </div>
+
+    <div class="card">
+      <h2>Hội thoại</h2>
+      <div id="turns"></div>
+      <div id="empty" class="note">Hỏi một câu để bắt đầu. Ví dụ:
+        <em>“Tăng trưởng GDP của Việt Nam gần đây ra sao?”</em></div>
+    </div>
+
+    <div class="card">
+      <label for="q">Câu hỏi</label>
+      <textarea id="q" placeholder="Nhập câu hỏi rồi Ctrl+Enter…"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="primary" id="send">Gửi</button>
+        <button id="stop" class="hidden">Dừng</button>
+        <span class="note" id="status"></span>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Nguồn của câu trả lời</h2>
+      <div id="sources"><p class="note">Nguồn sẽ hiện ở đây, đánh số khớp với
+        <span class="cite">[n]</span> trong câu trả lời. Bấm vào số để nhảy tới
+        đúng đoạn được trích.</p></div>
+    </div>
+
+    <div class="card">
+      <h2>Tiến độ ingest</h2>
+      <p class="note">Chạy lại một config đã có và xem tiến độ. Hệ thống
+        <strong>không</strong> nhận tài liệu tải lên: corpus phải công khai và có
+        license cho phép phát hành lại.</p>
+      <div class="row">
+        <input id="ingestConfig" placeholder="tên config, ví dụ bgem3">
+        <button id="ingestRun">Chạy</button>
+      </div>
+      <div id="ingestBox" class="hidden" style="margin-top:10px">
+        <div class="progress"><div id="ingestBar"></div></div>
+        <p class="note" id="ingestText" style="margin:6px 0 0"></p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer id="foot"></footer>
+
+<script>
+"use strict";
+/* ==========================================================================
+ * ⭐⭐ LUẬT SỐ MỘT CỦA FILE NÀY: KHÔNG BAO GIỜ `innerHTML`.
+ *
+ * Trang này dựng DOM từ hai nguồn KHÔNG TIN ĐƯỢC:
+ *   1. văn bản chunk corpus — chính khung `sources` gắn cờ `flags` cho nó
+ *      (`W4-12`), tức máy chủ đã nói thẳng "cái này có thể chứa payload";
+ *   2. câu trả lời của model, thứ được sinh RA TỪ nội dung ấy.
+ *
+ * Nên mọi văn bản đi qua `document.createTextNode` / `textContent`. Bộ dựng
+ * markdown ở dưới cũng vậy: nó tạo phần tử bằng `createElement` chứ không
+ * bao giờ ghép chuỗi HTML — nghĩa là kể cả khi luật parse có lỗi, kết quả tệ
+ * nhất là hiển thị xấu, không phải thực thi mã.
+ * ========================================================================== */
+
+const $ = (id) => document.getElementById(id);
+const KEY_STORAGE = "rag.apiKey";
+
+let apiKey = localStorage.getItem(KEY_STORAGE) || "";
+let conversationId = null;
+let controller = null;
+
+/* ------------------------------------------------------------------ khoá */
+
+function refreshKeyUi() {
+  $("keyInput").value = apiKey;
+  $("keyHint").textContent = apiKey
+    ? "Đã có khoá. Mọi lời gọi sẽ mang nó."
+    : "Chưa có khoá — câu hỏi sẽ bị từ chối với HTTP 401.";
+  $("keyCard").classList.toggle("hidden", Boolean(apiKey));
+}
+$("keyToggle").onclick = () => $("keyCard").classList.toggle("hidden");
+$("keySave").onclick = () => {
+  apiKey = $("keyInput").value.trim();
+  localStorage.setItem(KEY_STORAGE, apiKey);
+  refreshKeyUi();
+};
+$("keyClear").onclick = () => {
+  apiKey = "";
+  localStorage.removeItem(KEY_STORAGE);
+  refreshKeyUi();
+  $("keyCard").classList.remove("hidden");
+};
+
+/* ------------------------------------------------- dựng văn bản an toàn */
+
+/** Chuẩn hoá whitespace — CÙNG luật với `_normalise` phía máy chủ. */
+function squash(text) {
+  return text.split(/\s+/).filter(Boolean).join(" ");
+}
+
+/**
+ * Chèn `[n]` thành nút bấm được, phần còn lại là text node.
+ * `verifiedByN` chỉ quyết định MÀU, không quyết định điều gì về sự thật:
+ * phán quyết `verified` đến từ máy chủ (`W4-09`), trang này chỉ vẽ lại nó.
+ */
+function appendWithCitations(parent, text, verifiedByN) {
+  const re = /\[(\d{1,2})\]/g;
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parent.appendChild(document.createTextNode(text.slice(last, m.index)));
+    const n = Number(m[1]);
+    const b = document.createElement("button");
+    b.className = "cite" + (verifiedByN && verifiedByN.get(n) === false ? " bad" : "");
+    b.type = "button";
+    b.textContent = "[" + n + "]";
+    b.dataset.n = String(n);
+    b.title = "Mở nguồn " + n + " và tô đoạn được trích";
+    b.onclick = () => revealSource(n);
+    parent.appendChild(b);
+    last = re.lastIndex;
+  }
+  if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
+}
+
+/** In đậm `**...**` — vẫn bằng createElement, không ghép HTML. */
+function appendInline(parent, text, verifiedByN) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  for (const part of parts) {
+    if (!part) continue;
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      const strong = document.createElement("strong");
+      appendWithCitations(strong, part.slice(2, -2), verifiedByN);
+      parent.appendChild(strong);
+    } else {
+      appendWithCitations(parent, part, verifiedByN);
+    }
+  }
+}
+
+/**
+ * Tập con markdown đủ cho câu trả lời thật: tiêu đề `#`, gạch đầu dòng, đoạn.
+ * ⚠️ Cố ý KHÔNG có ảnh, link, HTML thô. Một bộ render đầy đủ cần một bộ khử
+ * trùng (sanitiser), và một sanitiser là một phụ thuộc bên ngoài trên đúng
+ * đường đi của nội dung không tin được. Tập con này không parse HTML nên
+ * không có gì để khử.
+ */
+function renderMarkdown(container, text, verifiedByN) {
+  container.textContent = "";
+  let list = null;
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trimEnd();
+    const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+    if (bullet) {
+      if (!list) { list = document.createElement("ul"); container.appendChild(list); }
+      const li = document.createElement("li");
+      appendInline(li, bullet[1], verifiedByN);
+      list.appendChild(li);
+      continue;
+    }
+    list = null;
+    if (!line.trim()) continue;
+    const head = line.match(/^#{1,6}\s+(.*)$/);
+    const el = document.createElement(head ? "h3" : "p");
+    appendInline(el, head ? head[1] : line, verifiedByN);
+    container.appendChild(el);
+  }
+}
+
+/* --------------------------------------------------------------- nguồn */
+
+let currentSources = [];
+let currentCitations = [];
+
+function renderSources(sources) {
+  currentSources = sources || [];
+  const box = $("sources");
+  box.textContent = "";
+  if (!currentSources.length) {
+    const p = document.createElement("p");
+    p.className = "note";
+    p.textContent = "Lượt này không dùng tài liệu nào.";
+    box.appendChild(p);
+    return;
+  }
+  for (const s of currentSources) {
+    const d = document.createElement("details");
+    d.className = "src";
+    d.id = "src-" + s.n;
+    const sum = document.createElement("summary");
+    sum.appendChild(document.createTextNode("[" + s.n + "] " + (s.title || s.doc_id || "?")));
+    if (s.flags && s.flags.length) {
+      const flag = document.createElement("span");
+      flag.className = "badge warn";
+      flag.style.marginLeft = "6px";
+      flag.textContent = "nghi tiêm: " + s.flags.join(", ");
+      flag.title = "W4-12 gắn cờ nội dung này. Cờ KHÔNG loại nó khỏi ngữ cảnh —"
+        + " bộ luật có dương tính giả, và loại lặng lẽ còn tệ hơn.";
+      sum.appendChild(flag);
+    }
+    d.appendChild(sum);
+
+    const body = document.createElement("div");
+    body.className = "body";
+    if (typeof s.content === "string") {
+      body.textContent = s.content;
+    } else {
+      // Lượt trúng cache ghi trước `W6-01` không có `content`. Nói ra, thay vì
+      // để ô trống trông như tài liệu rỗng.
+      body.textContent = "(bản cache cũ không kèm nguyên văn — hỏi lại để có)";
+    }
+    d.appendChild(body);
+    box.appendChild(d);
+  }
+}
+
+/** Tô các quote đã xác minh của nguồn `n` vào nội dung của nó. */
+function revealSource(n) {
+  const d = document.getElementById("src-" + n);
+  if (!d) return;
+  for (const el of document.querySelectorAll(".src")) el.dataset.active = "0";
+  d.dataset.active = "1";
+  d.open = true;
+
+  const body = d.querySelector(".body");
+  const source = currentSources.find((s) => s.n === n);
+  const quotes = currentCitations.filter((c) => c.verified && c.chunk_id === (source || {}).chunk_id);
+  for (const stale of d.querySelectorAll(".quote")) stale.remove();
+
+  let highlighted = false;
+  if (source && typeof source.content === "string" && quotes.length) {
+    highlighted = highlight(body, source.content, quotes.map((c) => c.quote));
+  }
+  if (!highlighted) {
+    /* ⭐⭐ Không tìm thấy chỗ tô KHÔNG có nghĩa là quote sai.
+     * Máy chủ đối chiếu bằng `_quote_matches` (tách theo dấu lược, khớp từng
+     * mảnh đúng thứ tự); trang này chỉ tìm chuỗi con đơn giản. Hai luật khác
+     * nhau, nên trang này KHÔNG được phép tự ra phán quyết — nó in nguyên văn
+     * quote ra cạnh nguồn và để phù hiệu `verified` của máy chủ nói. */
+    for (const q of quotes) {
+      const bq = document.createElement("blockquote");
+      bq.className = "quote";
+      bq.textContent = "“" + q.quote + "”";
+      d.insertBefore(bq, body);
+    }
+  }
+  d.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+/** Tô `quotes` trong `content`. Trả `true` nếu tô được ít nhất một chỗ. */
+function highlight(body, content, quotes) {
+  const hay = squash(content);
+  const spans = [];
+  for (const q of quotes) {
+    const needle = squash(q);
+    if (!needle) continue;
+    const at = hay.indexOf(needle);
+    if (at >= 0) spans.push([at, at + needle.length]);
+  }
+  if (!spans.length) return false;
+  spans.sort((a, b) => a[0] - b[0]);
+  body.textContent = "";
+  let cursor = 0;
+  for (const [from, to] of spans) {
+    if (from < cursor) continue;
+    if (from > cursor) body.appendChild(document.createTextNode(hay.slice(cursor, from)));
+    const mark = document.createElement("mark");
+    mark.textContent = hay.slice(from, to);
+    body.appendChild(mark);
+    cursor = to;
+  }
+  if (cursor < hay.length) body.appendChild(document.createTextNode(hay.slice(cursor)));
+  return true;
+}
+
+/* ------------------------------------------------------------ hỏi–đáp */
+
+function newTurn(question) {
+  $("empty").classList.add("hidden");
+  const wrap = document.createElement("div");
+  wrap.className = "turn";
+  const q = document.createElement("div");
+  q.className = "question";
+  q.textContent = question;
+  const a = document.createElement("div");
+  a.className = "answer";
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  wrap.append(q, a, meta);
+  $("turns").appendChild(wrap);
+  wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  return { answer: a, meta };
+}
+
+function badge(parent, text, kind) {
+  const b = document.createElement("span");
+  b.className = "badge" + (kind ? " " + kind : "");
+  b.textContent = text;
+  parent.appendChild(b);
+  return b;
+}
+
+function feedbackButtons(parent, messageId, finishReason) {
+  if (finishReason === "empty" || !messageId) {
+    /* `TD-78`: `_save()` bỏ qua câu trả lời rỗng, nên `answer_message_id` trỏ
+     * vào một hàng KHÔNG tồn tại và `POST /feedback` trả 404 — đúng lượt đáng
+     * nhận 👎 nhất. Tắt nút và nói lý do, thay vì để người dùng bấm rồi nhận
+     * một lỗi không giải thích được. */
+    const n = document.createElement("span");
+    n.className = "note";
+    n.textContent = "(không chấm được lượt rỗng — TD-78)";
+    parent.appendChild(n);
+    return;
+  }
+  const out = document.createElement("span");
+  out.className = "note";
+  for (const [label, rating] of [["👍", 1], ["👎", -1]]) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.style.padding = "2px 8px";
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const r = await fetch("/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+          body: JSON.stringify({ message_id: messageId, rating }),
+        });
+        out.textContent = r.ok ? " đã ghi" : " không ghi được (HTTP " + r.status + ")";
+      } catch (e) {
+        out.textContent = " không ghi được";
+      } finally {
+        b.disabled = false;
+      }
+    };
+    parent.appendChild(b);
+  }
+  parent.appendChild(out);
+}
+
+/** Đọc một luồng SSE thành từng khung `{event, data}`. */
+async function* frames(response) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let cut;
+    while ((cut = buffer.indexOf("\n\n")) >= 0) {
+      const raw = buffer.slice(0, cut);
+      buffer = buffer.slice(cut + 2);
+      let name = "message", payload = "";
+      for (const line of raw.split("\n")) {
+        if (line.startsWith("event:")) name = line.slice(6).trim();
+        else if (line.startsWith("data:")) payload += line.slice(5).trim();
+      }
+      if (payload) {
+        try { yield { event: name, data: JSON.parse(payload) }; }
+        catch (e) { /* khung hỏng: bỏ qua, đừng giết cả luồng */ }
+      }
+    }
+  }
+}
+
+async function ask() {
+  const question = $("q").value.trim();
+  if (!question) return;
+  if (!apiKey) { $("keyCard").classList.remove("hidden"); $("keyInput").focus(); return; }
+
+  $("q").value = "";
+  $("send").disabled = true;
+  $("stop").classList.remove("hidden");
+  $("status").textContent = "đang truy hồi…";
+  currentCitations = [];
+  const { answer, meta } = newTurn(question);
+  let text = "";
+  let messageId = null;
+  let finishReason = null;
+  const verifiedByN = new Map();
+  const started = performance.now();
+  controller = new AbortController();
+
+  try {
+    const response = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+      body: JSON.stringify({
+        message: question,
+        top_k: 5,
+        conversation_id: conversationId,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const p = document.createElement("p");
+      p.className = "error";
+      p.textContent = response.status === 401
+        ? "HTTP 401 — khoá API không hợp lệ."
+        : "HTTP " + response.status + " — máy chủ từ chối yêu cầu.";
+      answer.appendChild(p);
+      return;
+    }
+
+    let sawDone = false;
+    for await (const frame of frames(response)) {
+      if (frame.event === "meta") {
+        conversationId = frame.data.conversation_id;
+        messageId = frame.data.answer_message_id;
+        $("bundle").textContent = "bundle " + frame.data.bundle_version
+          + " · " + frame.data.model;
+        $("status").textContent = frame.data.route === "retrieve"
+          ? "đang sinh câu trả lời…" : "đang trả lời…";
+      } else if (frame.event === "sources") {
+        renderSources(frame.data.sources);
+      } else if (frame.event === "delta") {
+        text += frame.data.text;
+        renderMarkdown(answer, text, verifiedByN);
+      } else if (frame.event === "citations") {
+        currentCitations = frame.data.citations || [];
+        for (const c of currentCitations) {
+          const s = currentSources.find((x) => x.chunk_id === c.chunk_id);
+          if (s) verifiedByN.set(s.n, Boolean(c.verified));
+        }
+        for (const n of frame.data.invalid_ns || []) verifiedByN.set(n, false);
+        renderMarkdown(answer, text, verifiedByN);
+        const bad = (frame.data.total || 0) - (frame.data.verified || 0);
+        badge(meta, frame.data.total
+          ? frame.data.verified + "/" + frame.data.total + " trích dẫn xác minh được"
+          : "không có trích dẫn", bad ? "warn" : "ok");
+      } else if (frame.event === "done") {
+        sawDone = true;
+        finishReason = frame.data.finish_reason;
+        const total = Math.round(performance.now() - started);
+        badge(meta, total + " ms");
+        if (frame.data.finish_reason === "cache") badge(meta, "trả từ cache", "ok");
+        if (frame.data.finish_reason === "length") badge(meta, "bị cắt vì hết token", "warn");
+        if (frame.data.finish_reason === "empty") badge(meta, "model không nói gì", "bad");
+        if (frame.data.language_mismatch) badge(meta, "khác ngôn ngữ câu hỏi", "warn");
+        feedbackButtons(meta, messageId, finishReason);
+      } else if (frame.event === "error") {
+        const p = document.createElement("p");
+        p.className = "error";
+        p.textContent = frame.data.detail || "lỗi không rõ";
+        answer.appendChild(p);
+        sawDone = true;
+      }
+    }
+    if (!sawDone) {
+      /* ⭐ Hết dòng KHÔNG phải là xong. Chính docstring của `POST /chat` ghi:
+       * một dòng `delta` dừng lại giống hệt nhau khi model nói xong, khi kết
+       * nối đứt, và khi nhà cung cấp hết hạn mức. Im lặng ở đây là nói dối. */
+      const p = document.createElement("p");
+      p.className = "error";
+      p.textContent = "Luồng đứt trước khi có khung `done` — câu trả lời có thể thiếu.";
+      answer.appendChild(p);
+    }
+  } catch (e) {
+    if (e.name !== "AbortError") {
+      const p = document.createElement("p");
+      p.className = "error";
+      p.textContent = "Không nối được tới máy chủ.";
+      answer.appendChild(p);
+    }
+  } finally {
+    controller = null;
+    $("send").disabled = false;
+    $("stop").classList.add("hidden");
+    $("status").textContent = "";
+  }
+}
+
+$("send").onclick = ask;
+$("stop").onclick = () => { if (controller) controller.abort(); };
+$("q").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) ask();
+});
+
+/* ------------------------------------------------------ tiến độ ingest */
+
+let ingestTimer = null;
+
+async function pollIngest(jobId) {
+  try {
+    const r = await fetch("/admin/ingest/" + encodeURIComponent(jobId), {
+      headers: { Authorization: "Bearer " + apiKey },
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const job = await r.json();
+    const total = job.documents_total || 0;
+    const done = job.documents_done || 0;
+    $("ingestBar").style.width = total ? Math.round((done / total) * 100) + "%" : "0";
+    $("ingestText").textContent =
+      job.state + " · " + done + "/" + total + " tài liệu · "
+      + (job.chunks_embedded || 0) + " chunk embed, "
+      + (job.chunks_reused || 0) + " dùng lại"
+      + (job.error ? " · lỗi: " + job.error : "");
+    if (["succeeded", "failed", "cancelled"].includes(job.state)) {
+      clearInterval(ingestTimer);
+      ingestTimer = null;
+    }
+  } catch (e) {
+    $("ingestText").textContent = "không đọc được tiến độ (" + e.message + ")";
+    clearInterval(ingestTimer);
+    ingestTimer = null;
+  }
+}
+
+$("ingestRun").onclick = async () => {
+  const config = $("ingestConfig").value.trim();
+  if (!config) return;
+  $("ingestBox").classList.remove("hidden");
+  $("ingestText").textContent = "đang xếp hàng…";
+  try {
+    const r = await fetch("/admin/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+      body: JSON.stringify({ config }),
+    });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      $("ingestText").textContent = "HTTP " + r.status + " — " + (body.detail || "từ chối");
+      return;
+    }
+    const job = await r.json();
+    if (ingestTimer) clearInterval(ingestTimer);
+    await pollIngest(job.job_id);
+    ingestTimer = setInterval(() => pollIngest(job.job_id), 2000);
+  } catch (e) {
+    $("ingestText").textContent = "không gọi được dịch vụ ingest";
+  }
+};
+
+/* ------------------------------------------------------------ khởi động */
+
+refreshKeyUi();
+fetch("/ready").then((r) => r.json()).then((s) => {
+  $("foot").textContent = s.ready
+    ? "Máy chủ sẵn sàng · bundle " + s.active
+    : "Máy chủ chưa sẵn sàng — /ready trả 503.";
+}).catch(() => { $("foot").textContent = "Không nối được tới máy chủ."; });
+</script>
+</body>
+</html>

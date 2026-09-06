@@ -297,6 +297,7 @@ def make() -> FastAPI:
     # app test phải tự khai danh tính bộ sinh của mình. Phần sau dấu `:` phải
     # khớp `model_requested` của `ScriptedLLM` — lệch là cache tắt câm (`W5-11`).
     app.state.chat.generator = GENERATOR
+    app.state.chat.endpoint = ENDPOINT
     mode = os.environ.get(ENV_ROUTER, "")
     if mode:
         # ⭐ Cùng `LLMRouter` của production, chỉ đổi nhà cung cấp giả — nên test
@@ -322,6 +323,10 @@ def make() -> FastAPI:
 
 GENERATOR = "scripted:scripted-model"
 """Danh tính bộ sinh của app test — cùng giá trị mà bài kiểm namespace dựng lại."""
+
+ENDPOINT = "scripted://in-process"
+"""Máy chủ giả đã phục vụ `GENERATOR` (`W6-01`). Không rỗng có chủ đích: một
+chuỗi rỗng sẽ để bài kiểm namespace xanh cả khi trục endpoint bị bỏ khỏi khoá."""
 
 
 def write_keys(path: Path, keys: dict[str, dict[str, Any]]) -> None:

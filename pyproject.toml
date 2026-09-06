@@ -95,6 +95,14 @@ data = [
 loadtest = [
     "locust>=2.31",
 ]
+# `W6-01`. Playwright kéo theo một trình duyệt ~150 MB tải riêng bằng
+# `playwright install chromium`, nên nó **không** nằm trong `dev`: bốn tầng CI
+# hiện tại không tầng nào chạy e2e (xem `.github/workflows/ci.yml`), và bắt mọi
+# lần `uv sync --extra dev` tải một Chromium là đổi vài giây lấy vài phút.
+ui = [
+    "playwright>=1.47",
+    "pytest-playwright>=0.5",
+]
 # MLflow chỉ dùng ở **pipeline plane** (theo dõi thí nghiệm offline). Để nó ngoài
 # `pipeline` extra vì nó kéo theo cả một web stack (flask, alembic, sqlalchemy,
 # gunicorn/waitress) chỉ để phục vụ UI — CI chạy unit test không cần thứ đó, và

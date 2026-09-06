@@ -4,7 +4,9 @@
 > file này cho biết **đang làm dở tới đâu** và **lệnh nào để tiếp tục**.
 > Trạng thái chính thức của từng task vẫn nằm ở [`CHECKLIST.md`](CHECKLIST.md).
 >
-> **Phiên mới nhất: 2026-09-06 (20) (cuối file)** — `W6-05` xong, **`W6` 1/8**. Load test. **Trần thông lượng một instance: 1,33 req/s (~80 req/phút)**, bão hoà giữa u=8 và u=16. ⭐⭐ **Một load test gọi DeepSeek thật là một load test đo DeepSeek** → stub hiệu chỉnh theo 242 request thật, chi phí **$0**. ⭐⭐ **`completion` đứng yên 4,9 s suốt 6 bậc trong khi `rerank` đi 975 → 19.364 ms** — cơ chế bão hoà **là** `TD-63`, trần = **91% của `1/thời-gian-rerank`**. ⭐⭐ **`AU-11`**: 8 câu trùng đồng thời ⇒ 8 lời gọi; nối đuôi ⇒ 0 lời gọi / 50 ms. ⭐⭐ **`TD-72` vá ở `activate` chứ không `lifespan`** — 13.386 → **4.427 ms**. ⭐⭐ Ngân sách p95 3.500 ms **không đạt được bằng tối ưu**, và nó viết trước khi có streaming. Tiêm 21/21 đỏ. Nợ mới `NEW-09`, `NEW-10`.
+> **Phiên mới nhất: 2026-09-06 (21) (cuối file)** — `W6-01` giao diện web chạy (`[~]`, hai ô 🟡). Một tệp tĩnh, không bước build; streaming · bấm `[n]` mở đúng nguồn và **tô đoạn được trích** · 👍/👎 · 13 bài Playwright. ⭐⭐ **Trang dựng DOM từ hai nguồn không tin được** ⇒ luật **không bao giờ `innerHTML`** + CSP. ⭐⭐ **Bấm citation cần một trường mới trong SSE** — nhưng hàng Postgres **không** được mang nó. ⭐⭐ **Trang không tìm thấy chỗ tô thì in nguyên văn quote, và không được tự ra phán quyết**. ⭐⭐ **Một lỗi production tìm ra trong lúc chụp ảnh**: khoá cache thiếu **endpoint** — server DeepSeek thật phát lại lời của stub `W6-05`. ⚠️ `upload progress` 🟡 (hệ thống không có upload → `NEW-11`). Tiêm **Python 15/15 + HTML/JS 8/8 đỏ**, và một **lượt tiêm giả** vì server cũ giữ cổng.
+>
+> Phiên trước: **2026-09-06 (20)** — `W6-05` xong, **`W6` 1/8**. Load test. **Trần thông lượng một instance: 1,33 req/s (~80 req/phút)**, bão hoà giữa u=8 và u=16. ⭐⭐ **Một load test gọi DeepSeek thật là một load test đo DeepSeek** → stub hiệu chỉnh theo 242 request thật, chi phí **$0**. ⭐⭐ **`completion` đứng yên 4,9 s suốt 6 bậc trong khi `rerank` đi 975 → 19.364 ms** — cơ chế bão hoà **là** `TD-63`, trần = **91% của `1/thời-gian-rerank`**. ⭐⭐ **`AU-11`**: 8 câu trùng đồng thời ⇒ 8 lời gọi; nối đuôi ⇒ 0 lời gọi / 50 ms. ⭐⭐ **`TD-72` vá ở `activate` chứ không `lifespan`** — 13.386 → **4.427 ms**. ⭐⭐ Ngân sách p95 3.500 ms **không đạt được bằng tối ưu**, và nó viết trước khi có streaming. Tiêm 21/21 đỏ. Nợ mới `NEW-09`, `NEW-10`.
 >
 > Phiên trước: **2026-09-06 (19)** — `W5-11` xong, **`W5` 11/11 — W5 ĐÓNG**. Ablation bộ sinh DeepSeek vs GLM, judge kép. ⭐⭐ Lượt đo **tìm ra một lỗi production trước khi in được con số nào**: khoá cache không mang model sinh. ⭐⭐ **10/11 metric có CI chứa 0 dưới cả hai judge** — tập này không phân biệt được hai model. ⭐⭐ **Self-preference bias thành một con số**: khoảng cách faithfulness **đổi dấu** tuỳ judge nào chấm. Giữ `deepseek-v4-flash` vì p95 **4.842 vs 10.879 ms**. `TD-77` trả xong. Nợ mới `TD-86`. ,54.
 >
@@ -4727,3 +4729,129 @@ nó soi cả bề mặt mới) và **trước** khi có bất cứ thứ gì cô
 Hai việc mới sinh ra từ lượt này: `NEW-09` (bundle `c=20` — đòn bẩy kép duy nhất
 còn lại) và `NEW-10` (single-flight). Và `TD-13` vẫn là việc của bạn (~1 buổi):
 điều kiện duy nhất còn thiếu của `G1`.
+
+
+---
+
+## Phiên 2026-09-06 (21) · `W6-01` — giao diện web
+
+**Xong (một phần)**: `W6-01`, đánh `[~]` chứ không `[x]` — hai ô của DoD còn 🟡
+và lý do nằm ở dưới. Chi phí **~$0,002**. Báo cáo:
+`reports/tasks/w6-01-web-ui.md`.
+
+### ⭐⭐ Trang này dựng DOM từ hai nguồn không tin được
+
+Câu ấy quyết định gần như mọi lựa chọn kỹ thuật: **văn bản chunk corpus** (chính
+khung `sources` gắn cờ `flags` cho nó — `W4-12`, tức máy chủ đã nói thẳng "cái
+này có thể chứa payload") và **câu trả lời của model**, thứ sinh **ra từ** nội
+dung ấy.
+
+Luật số một: **không bao giờ `innerHTML`**. Bộ dựng markdown là một tập con viết
+tay (tiêu đề, đậm, bullet, `[n]`) tạo phần tử bằng `createElement` — nó **không
+parse HTML** nên không có gì để khử, và không cần một sanitiser đứng đúng trên
+đường đi của nội dung không tin được.
+
+Ba hàng rào, hỏng theo ba cách khác nhau: luật trong mã (hỏng ở lần sửa thứ ba) ·
+một bài test quét mã (đỏ ngay dòng vi phạm đầu tiên) · CSP `default-src 'none'`
+(chỉ hỏng nếu trình duyệt bỏ qua CSP).
+
+⚠️ Bài test quét mã phải **bóc chú thích trước**: docstring của chính trang nhắc
+tên những API bị cấm để giải thích vì sao chúng bị cấm, và một phép grep thô sẽ
+đỏ vì đúng đoạn văn nói rằng chúng không được dùng.
+
+### ⭐⭐ Bấm citation cần một trường mới trong SSE — và Postgres không được mang nó
+
+Khung `sources` cũ không chở nội dung chunk, nên UI chỉ hiện được *tiêu đề*
+nguồn: người đọc vẫn phải **tin** lời model rằng quote có thật, đúng thứ `W4-09`
+sinh ra để không phải tin. Thêm `content`.
+
+Nhưng cùng một danh sách phục vụ hai mục đích khác nhau ⇒ **hai payload khác
+nhau**. Hàng Postgres không mang `content`: nó là bản sao thứ hai của index
+(~1 KB → ~8 KB mỗi lượt) và đi tiếp vào file ứng viên golden set của `W5-08`.
+
+### ⭐⭐ Trang có thể không tìm thấy chỗ tô, và không được phép nói gì thêm
+
+Máy chủ đối chiếu bằng `_quote_matches` (tách dấu lược, khớp từng mảnh đúng thứ
+tự); trang chỉ tìm chuỗi con sau chuẩn hoá whitespace. Hai luật khác nhau ⇒ có
+quote **hợp lệ** mà trang không định vị được. Khi ấy trang in nguyên văn quote ra
+và để phù hiệu `verified` của máy chủ nói.
+
+Bài test đòi `mark` **hoặc** `.quote`. Đòi mỗi `mark` sẽ ép người sửa sau đi chép
+`_quote_matches` sang JavaScript — tức bản thứ hai của một phép kiểm bảo mật,
+đúng họ lỗi `AU-12`.
+
+### ⭐⭐ Một lỗi production tìm ra trong lúc chụp ảnh màn hình
+
+Ảnh đầu chụp với stub của `W6-05`. Ảnh sau muốn câu trả lời **thật**, nên đổi
+server sang DeepSeek — và server thật trả về nguyên văn đoạn text do **stub**
+sinh ra, với `done` khai `model: "deepseek-v4-flash"`.
+
+`W5-11` đã đưa `provider:model` vào khoá cache; `DEEPSEEK_BASE_URL` không nằm
+trong cả hai. Cùng một cặp provider+slug trỏ vào hai máy chủ khác nhau là **hai
+bộ sinh khác nhau** — với một vLLM tự dựng thì slug còn do người dựng tự đặt.
+Endpoint là trục **thứ tư** của namespace, sau bundle (`W4-10`), prompt
+(`W4-11`), `top_k` (`AU-02`), generator (`W5-11`).
+
+⚠️ Để **ngoài** `generator`, không nhét vào: `generator` còn là tín hiệu failover
+(`split(":", 1)[-1]`) và một URL có dấu `:` làm phép tách ấy trả `"8199"`. Đó
+đúng là lỗi mà bản vá đầu của `W5-11` đã mắc một lần, chỉ khác chỗ hỏng.
+
+### ⭐ DoD hỏi "upload progress", hệ thống cố ý không có upload
+
+`IngestRequest` nhận một **tên config**, và docstring ở đó nói vì sao không nhận
+đường dẫn. Không endpoint nào nhận file — và đó không phải thiếu sót: quy tắc
+cứng *corpus phải công khai, license cho phép redistribute* là thứ một nút
+tải-lên phá thẳng (tài liệu không rõ nguồn → index → prompt → một câu trả lời
+**có trích dẫn**).
+
+Dựng **tiến độ job ingest** thay thế, qua proxy `/admin/ingest` — không cho
+trình duyệt gọi thẳng cổng 8001, vì `AU-10` (dịch vụ ấy không auth, đang được
+che bằng bind `127.0.0.1`). Mặc định **tắt**. Quyết định về upload → `NEW-11`.
+
+### ⚠️ Một va chạm cổng do `W6-05` để lại
+
+`test_chat_stream.py` cấp cổng từ dải **8091–8119**; stub của `W6-05` mặc định
+**8099**. Một stub đang chạy làm đúng một bài trong dải ấy đỏ với thông báo
+`"uvicorn chết lúc khởi động"` — không nhắc gì tới cổng. Stub dời sang **8199**.
+
+### Tiêm lỗi: Python 15/15, HTML/JS 8/8 — và một lượt tiêm GIẢ
+
+**Python** lượt một 13/15. Hai sống sót đều là lỗ test: xoá `"/"` khỏi
+`PUBLIC_PATHS` sống sót vì fixture của `test_ui.py` dựng một FastAPI **trần
+không có `AuthMiddleware`** (kiểm được *nội dung* trang, không kiểm được *ai vào
+được*); và `primary_endpoint` **chưa có bài test nào** — tôi vừa thêm nó và đã
+kiểm bằng mắt trên hệ chạy thay vì bằng một bài test.
+
+**HTML/JS** lượt một 5/8, chấm bằng chính bộ Playwright. Ba sống sót nói ba điều
+khác nhau: nhánh "in nguyên văn quote" **chưa từng chạy** (với stub thì quote
+luôn tô được) · nguồn rỗng được **nhánh dự phòng cứu** nên bài test cũ vẫn xanh ·
+và in câu trả lời thô ở nhánh `delta` bị **một lời gọi thứ hai** ở nhánh
+`citations` che mất — trạng thái cuối giống hệt, chỉ quãng ở giữa khác. *Một
+mutation chỉ đổi trạng thái tạm thời vẫn đáng giết: quãng tạm thời ấy là toàn bộ
+trải nghiệm của một API stream.*
+
+⚠️ **Và một lượt tiêm giả.** Lần chấm lại đầu cho **0/3 đỏ** trong khi hai bài
+test mới rõ ràng phải bắt được. Nguyên nhân: một server **cũ** vẫn giữ cổng 8000,
+nên `_serve()` của bộ tiêm thấy `/ready` xanh, trả về vui vẻ, và cả lượt chấm
+chạy trên trang **chưa bị tiêm**. Cùng họ "đỏ giả" của `NEW-08` nhưng ngược
+chiều — và nguy hiểm hơn, vì một lượt tiêm toàn màu xanh trông giống hệt một
+lượt tiêm không tìm ra gì. Bộ tiêm giờ **từ chối chạy** khi cổng đã có người.
+
+### Đo cuối
+
+37 test mới (21 tĩnh + 7 proxy + 4 nguồn/namespace + 5 bịt lỗ, cộng 13 Playwright) ·
+**2 328 xanh** bộ mặc định (2 skip) · **312 xanh** integration · ruff/mypy sạch ·
+**~$0,002**.
+
+### Việc tiếp theo
+
+`W6` còn **6/8** chưa xong (`W6-01` đang `[~]`): `W6-02` demo HF Spaces ·
+`W6-03` README · `W6-04` docs · `W6-06` security pass · `W6-07`/`W6-08` CV.
+
+Thứ tự đề nghị vẫn là **`W6-06` → `W6-02`**: security pass đứng **sau** khi UI
+tồn tại (để nó soi cả bề mặt mới — trang tĩnh, proxy `/admin/ingest`, và trường
+`content` mới trong khung SSE) và **trước** khi có bất cứ thứ gì công khai.
+
+Hai ô 🟡 của `W6-01` đóng ở `W6-02` (khoá cho người lạ) và `NEW-11` (quyết định
+về upload). Và `TD-13` vẫn là việc của bạn — điều kiện duy nhất còn thiếu của
+`G1`, và `W6-03`/`W6-07` sắp cần nó để bỏ chữ "model-reviewed".

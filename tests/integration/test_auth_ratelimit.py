@@ -136,6 +136,26 @@ def test_the_probes_stay_public(app_with_keys: TestClient) -> None:
     assert app_with_keys.get("/ready").status_code in (200, 503)
 
 
+def test_the_ui_page_stays_public(app_with_keys: TestClient) -> None:
+    """`W6-01`. Trang là chỗ người dùng **gõ khoá vào**; bắt nó xác thực tạo ra
+    một bài toán con gà–quả trứng.
+
+    ⚠️ Bài này phải chạy trên app **thật** có `AuthMiddleware`. Phép tiêm `M5`
+    (xoá `"/"` khỏi `PUBLIC_PATHS`) sống sót qua cả `tests/unit/test_ui.py` vì
+    fixture ở đó dựng một FastAPI trần không có middleware — nó kiểm được nội
+    dung trang, không kiểm được ai vào được trang.
+    """
+    response = app_with_keys.get("/")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+
+
+def test_the_public_page_does_not_make_the_api_public(app_with_keys: TestClient) -> None:
+    """Mặt kia của bài trên: trang mở KHÔNG được kéo theo endpoint dữ liệu nào."""
+    assert app_with_keys.post("/chat", json={"message": "xin chào"}).status_code == 401
+    assert app_with_keys.get("/admin/ingest/j1").status_code == 401
+
+
 @pytest.mark.parametrize("path", ["/docs", "/openapi.json", "/redoc"])
 def test_the_api_description_is_not_public(app_with_keys: TestClient, path: str) -> None:
     """`/health` lộ hai bit (sống, đã nạp bundle chưa). `/openapi.json` lộ **toàn

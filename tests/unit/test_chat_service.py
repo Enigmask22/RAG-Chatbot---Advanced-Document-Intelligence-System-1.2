@@ -751,6 +751,48 @@ async def test_a_cache_hit_persists_the_sources_the_client_was_shown() -> None:
     assert turn.sources() == [], "không có contexts — đúng, và đó là cái bẫy"
 
 
+class TestSourcesCarryContentToTheClientButNotToPostgres:
+    """`W6-01`. Cùng một danh sách nguồn phục vụ hai mục đích khác nhau, nên nó
+    phải là hai payload khác nhau — và sự khác nhau ấy viết ở một chỗ."""
+
+    def test_the_sse_frame_carries_the_chunk_text(self) -> None:
+        """⭐⭐ Điều kiện để "bấm citation → nhảy tới chỗ được trích" tồn tại.
+        Không có nó thì UI chỉ hiện được tiêu đề nguồn, tức người đọc vẫn phải
+        **tin** lời model rằng quote có thật — đúng thứ `W4-09` sinh ra để không
+        phải tin."""
+        turn = _turn()
+        assert [s["content"] for s in turn.sources()] == [
+            "RRF là reciprocal rank fusion.",
+            "k=1 thắng.",
+        ]
+
+    def test_the_postgres_row_does_not(self) -> None:
+        """Hàng lịch sử là **bản sao thứ hai của index** nếu mang nguyên văn:
+        ~1 KB → ~8 KB mỗi lượt, và nó đi tiếp vào file ứng viên golden set của
+        `W5-08`."""
+        turn = _turn()
+        assert all("content" not in s for s in turn.persisted_sources())
+
+    def test_stripping_content_keeps_every_other_field(self) -> None:
+        """Phép lọc phải bỏ ĐÚNG một khoá. Một bản vá cắt nhầm `chunk_id` sẽ
+        tái lập chính lỗi mà `W5-08` vừa đóng."""
+        turn = _turn()
+        rich = turn.sources()
+        lean = turn.persisted_sources()
+        assert [set(a) - set(b) for a, b in zip(rich, lean, strict=True)] == [
+            {"content"},
+            {"content"},
+        ]
+
+    def test_a_cached_replay_is_stripped_too(self) -> None:
+        """Nguồn của lượt cache đến từ Redis, không từ `contexts` — nên nó đi
+        theo một nhánh khác trong cùng hàm, và nhánh ấy cũng phải lọc."""
+        turn = _cached_turn()
+        assert turn.cached is not None
+        turn.cached.sources.append({"n": 2, "chunk_id": "c2", "content": "văn bản"})
+        assert all("content" not in s for s in turn.persisted_sources())
+
+
 @pytest.mark.asyncio
 async def test_a_successful_answer_is_stored_with_the_visible_text() -> None:
     """Ghi cache = bản ĐÃ PHÁT (block cắt rồi) + khung citations + sources —
@@ -870,14 +912,17 @@ class TestCacheNamespace:
         """Một câu trả lời sinh dưới `chat-system@v1` KHÔNG phải câu trả lời
         của `chat-system@v2`: đổi prompt phải invalidate cache như đổi bundle,
         và cách rẻ nhất là cùng cơ chế — version nằm trong khoá."""
-        assert cache_namespace("0.2.0", 5, "deepseek:m") == "0.2.0+chat-system@v2+k5+gdeepseek:m"
+        assert (
+            cache_namespace("0.2.0", 5, "deepseek:m", "https://api.deepseek.com")
+            == "0.2.0+chat-system@v2+k5+gdeepseek:m+ehttps://api.deepseek.com"
+        )
 
     def test_two_top_k_are_two_namespaces(self) -> None:
         """`NEW-08`/`AU-02`: cùng câu hỏi với `top_k=5` và `top_k=20` là hai
         lượt sinh trên hai bộ ngữ cảnh — câu trả lời của lượt này KHÔNG được
         phát lại cho lượt kia. Vào namespace (không phải điều kiện loại) để
         client dùng `top_k` khác mặc định một cách nhất quán vẫn có cache."""
-        assert cache_namespace("0.2.0", 5, "g") != cache_namespace("0.2.0", 20, "g")
+        assert cache_namespace("0.2.0", 5, "g", "e") != cache_namespace("0.2.0", 20, "g", "e")
 
     @pytest.mark.asyncio
     async def test_store_writes_into_the_prompt_scoped_namespace(self) -> None:
@@ -888,7 +933,7 @@ class TestCacheNamespace:
         await _drain(service, _turn(cache_vector=np.ones(4, dtype=np.float32)))
         await asyncio.sleep(0)
 
-        assert cache.stored[0]["bundle"] == "0.2.0+chat-system@v2+k5+gfake-model"
+        assert cache.stored[0]["bundle"] == "0.2.0+chat-system@v2+k5+gfake-model+e"
 
     def test_two_generators_are_two_namespaces(self) -> None:
         """⭐⭐ `W5-11` — lỗi do chính lượt đo của task ấy tìm ra.
@@ -901,9 +946,38 @@ class TestCacheNamespace:
         từ `Settings`, không từ bundle. Nên một lần đổi biến môi trường vẫn phát
         lại lời model cũ tới hết TTL 24 giờ với `bundle_version` không đổi.
         """
-        assert cache_namespace("0.2.0", 5, "deepseek:deepseek-v4-flash") != cache_namespace(
-            "0.2.0", 5, "glm:glm-5.3-flash"
+        assert cache_namespace(
+            "0.2.0", 5, "deepseek:deepseek-v4-flash", "https://api.deepseek.com"
+        ) != cache_namespace("0.2.0", 5, "glm:glm-5.3-flash", "https://api.z.ai/api/paas/v4")
+
+    def test_two_endpoints_are_two_namespaces(self) -> None:
+        """⭐⭐ `W6-01` — bắt được trên hệ ĐANG CHẠY, không bởi một bài test.
+
+        Trong lúc chụp ảnh màn hình cho giao diện: server trỏ vào DeepSeek
+        **thật** phát lại nguyên văn câu trả lời do stub của `W6-05` sinh ra,
+        và khung `done` khai `model: "deepseek-v4-flash"` — gọi tên một model
+        chưa từng viết đoạn text ấy.
+
+        `W5-11` đã đưa `provider:model` vào khoá; `DEEPSEEK_BASE_URL` thì
+        không nằm trong cả hai. Cùng một cặp provider+slug trỏ vào hai máy
+        chủ khác nhau là hai bộ sinh khác nhau — và với một vLLM tự dựng thì
+        slug còn do người dựng tự đặt.
+        """
+        same = ("0.2.0", 5, "deepseek:deepseek-chat")
+        assert cache_namespace(*same, "https://api.deepseek.com") != cache_namespace(
+            *same, "http://127.0.0.1:8099"
         )
+
+    def test_the_endpoint_stays_out_of_the_generator_string(self) -> None:
+        """⚠️ `generator` còn là tín hiệu failover:
+        `requested_model == generator.split(":", 1)[-1]`. Nhét URL vào đó thì
+        `http://host:8099` làm phép tách trả về `"8099"` và cache bị tắt oan ở
+        mọi lượt bình thường — đúng lỗi mà bản vá đầu của `W5-11` đã mắc một
+        lần rồi. Hai thứ khác nhau ⇒ hai tham số khác nhau.
+        """
+        namespace = cache_namespace("0.2.0", 5, "deepseek:m", "http://127.0.0.1:8099")
+        generator_part = namespace.split("+g", 1)[1].split("+e", 1)[0]
+        assert generator_part.split(":", 1)[-1] == "m"
 
     @pytest.mark.asyncio
     async def test_an_undeclared_generator_turns_the_cache_off(self) -> None:
@@ -1102,4 +1176,4 @@ async def test_the_cache_is_stored_under_the_top_k_that_produced_the_answer() ->
     )
     await asyncio.sleep(0)
 
-    assert cache.stored[0]["bundle"] == "0.2.0+chat-system@v2+k20+gfake-model"
+    assert cache.stored[0]["bundle"] == "0.2.0+chat-system@v2+k20+gfake-model+e"

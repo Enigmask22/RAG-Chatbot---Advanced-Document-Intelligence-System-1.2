@@ -496,12 +496,12 @@ LT_PROFILE ?= deepseek
 LT_RUN ?= w605-sweep
 
 .PHONY: loadtest-stub
-loadtest-stub:  ## `W6-05`: provider OpenAI-compat giả ở :8099 (PROFILE=fast|deepseek|slow)
-	$(PY) python -m loadtest.stub_llm --port 8099 --profile $(LT_PROFILE)
+loadtest-stub:  ## `W6-05`: provider OpenAI-compat giả ở :8199 (PROFILE=fast|deepseek|slow)
+	$(PY) python -m loadtest.stub_llm --port 8199 --profile $(LT_PROFILE)
 
 .PHONY: serve-stub
 serve-stub:  ## `W6-05`: server thật nhưng tầng sinh trỏ vào stub — KHÔNG gọi API trả tiền
-	DEEPSEEK_BASE_URL=http://127.0.0.1:8099 DEEPSEEK_API_KEY=stub-not-a-real-key \
+	DEEPSEEK_BASE_URL=http://127.0.0.1:8199 DEEPSEEK_API_KEY=stub-not-a-real-key \
 		$(PY) python -m serving --host 127.0.0.1 --port 8000
 
 .PHONY: loadtest-sweep

@@ -24,7 +24,7 @@ from sqlalchemy import Engine
 from serving.core.chat import cache_namespace
 from tests.integration.test_chat_stream import _chat, _serve
 
-from .chat_app import GENERATOR
+from .chat_app import ENDPOINT, GENERATOR
 
 pytestmark = pytest.mark.integration
 
@@ -114,7 +114,7 @@ def test_the_namespace_carries_a_ttl_and_the_bundle_version(
             client_r = redis_sync.Redis.from_url(REDIS_URL)
             # `W4-11`: namespace mang version prompt; `NEW-08`/`AU-02`: mang cả
             # `top_k` (request không khai nên là mặc định 5 của `ChatRequest`).
-            key = f"semcache:acme:{cache_namespace(bundle_version, 5, GENERATOR)}"
+            key = f"semcache:acme:{cache_namespace(bundle_version, 5, GENERATOR, ENDPOINT)}"
             # redis-py sync client khai kiểu union với Awaitable — ép int
             # cho mypy; runtime luôn là int ở client đồng bộ.
             while int(cast("int", client_r.ttl(key))) < 0 and time.monotonic() < deadline:

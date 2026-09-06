@@ -255,6 +255,43 @@ class TestGeneratorIdentity:
         assert primary_generator(Settings(chat_provider="none")) == ""
 
 
+class TestEndpointIdentity:
+    """`W6-01` — trục thứ tư của namespace cache.
+
+    Bắt được trên hệ ĐANG CHẠY, không bởi một bài test: server trỏ vào DeepSeek
+    thật phát lại nguyên văn câu trả lời do stub của `W6-05` sinh ra, và khung
+    `done` khai `model: "deepseek-v4-flash"` — gọi tên một model chưa từng viết
+    đoạn text ấy.
+    """
+
+    def test_each_provider_reports_its_own_endpoint(self) -> None:
+        from rag_core.settings import Settings
+        from serving.api.app import primary_endpoint
+
+        deepseek = primary_endpoint(Settings(chat_provider="deepseek"))
+        glm = primary_endpoint(Settings(chat_provider="glm"))
+        assert deepseek and glm and deepseek != glm
+
+    def test_it_follows_the_override_not_the_default(self) -> None:
+        """Đây là chính cái đã cắn: `DEEPSEEK_BASE_URL` trỏ sang stub thì danh
+        tính bộ sinh phải đổi theo, nếu không hai máy chủ dùng chung một ô."""
+        from rag_core.settings import Settings
+        from serving.api.app import primary_endpoint
+
+        assert (
+            primary_endpoint(
+                Settings(chat_provider="deepseek", deepseek_base_url="http://127.0.0.1:8199")
+            )
+            == "http://127.0.0.1:8199"
+        )
+
+    def test_no_provider_means_no_endpoint(self) -> None:
+        from rag_core.settings import Settings
+        from serving.api.app import primary_endpoint
+
+        assert primary_endpoint(Settings(chat_provider="none")) == ""
+
+
 class TestJudgeProvider:
     @pytest.mark.parametrize(
         ("model", "expected"),

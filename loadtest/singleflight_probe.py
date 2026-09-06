@@ -132,7 +132,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--n", type=int, default=8)
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
-    parser.add_argument("--stub-url", default="http://127.0.0.1:8099")
+    parser.add_argument("--stub-url", default="http://127.0.0.1:8199")
     parser.add_argument("--question", default=QUESTION)
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)

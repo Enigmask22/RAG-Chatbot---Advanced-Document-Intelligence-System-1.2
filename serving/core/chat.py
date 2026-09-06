@@ -146,7 +146,7 @@ SYSTEM_PROMPT = CHAT_SYSTEM.text
 NO_RETRIEVAL_SYSTEM_PROMPT = CHAT_NO_RETRIEVAL.text
 
 
-def cache_namespace(bundle_version: str, top_k: int, generator: str) -> str:
+def cache_namespace(bundle_version: str, top_k: int, generator: str, endpoint: str) -> str:
     """`W4-11`: version prompt phải nằm trong namespace cache như bundle_version.
 
     Registry vừa biến prompt thành một biến số có version thì semantic cache
@@ -177,8 +177,30 @@ def cache_namespace(bundle_version: str, top_k: int, generator: str) -> str:
 
     Cùng họ với `AU-02`, ở trục thứ ba: **một khoá cache phải chứa mọi đầu vào
     làm đổi câu trả lời**, và danh tính bộ sinh là đầu vào lớn nhất trong số đó.
+
+    ## ⭐⭐ `W6-01`: và ĐIỂM CUỐI cũng là một phần của danh tính ấy
+
+    Bắt được trên hệ đang chạy, trong lúc chụp ảnh màn hình cho `W6-01`: server
+    trỏ vào DeepSeek **thật** phát lại nguyên văn câu trả lời do stub của
+    `W6-05` sinh ra — và khung `done` khai `model: "deepseek-v4-flash"`, tức nó
+    gọi tên một model chưa từng viết ra đoạn text ấy.
+
+    Lý do: `primary_generator` dựng danh tính từ `chat_provider` + `chat_model`,
+    và `DEEPSEEK_BASE_URL` không có trong đó. Cùng một cặp provider+slug trỏ
+    vào hai máy chủ khác nhau (stub, vLLM tự dựng, một proxy, một region khác)
+    là **hai bộ sinh khác nhau** — và với vLLM thì slug thậm chí do người dựng
+    tự đặt.
+
+    Hẹp hơn `W5-11` ở production (base URL ít khi đổi), nhưng nó là đúng lỗi đã
+    cắn trong lúc phát triển, và luật thì không đổi: một khoá cache phải chứa
+    mọi đầu vào làm đổi câu trả lời. Endpoint là một trong số đó.
+
+    ⚠️ Để **ngoài** `generator` chứ không nhét vào nó: `generator` còn là tín
+    hiệu failover (`requested_model == generator.split(":", 1)[-1]`), và URL có
+    dấu `:` sẽ làm phép tách ấy trả về nhầm chuỗi. Hai thứ khác nhau thì hai
+    tham số khác nhau, không phải một chuỗi khéo léo.
     """
-    return f"{bundle_version}+{CHAT_SYSTEM.spec}+k{top_k}+g{generator}"
+    return f"{bundle_version}+{CHAT_SYSTEM.spec}+k{top_k}+g{generator}+e{endpoint}"
 
 
 def cache_eligible(
@@ -372,6 +394,23 @@ class ChatTurn:
                     "source_url": meta.source_url if meta else None,
                     "section_path": hit.chunk.section_path,
                     "score": round(hit.score, 6),
+                    # ⭐⭐ `W6-01`: nội dung chunk đi ra client, và đó là điều
+                    # kiện để "bấm citation → nhảy tới chỗ được trích" tồn tại.
+                    # Không có nó thì UI chỉ hiện được **tiêu đề** nguồn, tức
+                    # người đọc vẫn phải tin lời model rằng quote có thật —
+                    # đúng thứ `W4-09` sinh ra để không phải tin.
+                    #
+                    # Không phải một khoản lộ mới: chunk này **đã** đi tới model
+                    # trong prompt của chính người dùng đang hỏi, và bộ lọc
+                    # tenant đã chạy trước đó (`tenant_filter()`). Thứ thêm vào
+                    # là ai *nhìn thấy* nó — client hỏi, thay vì chỉ nhà cung
+                    # cấp LLM.
+                    #
+                    # ⚠️ Đi kèm một nghĩa vụ ở phía client: nội dung này là dữ
+                    # liệu corpus **không tin được** (`flags` ngay trên đây nói
+                    # thẳng thế). UI phải dựng nó bằng `textContent`, không bao
+                    # giờ `innerHTML` — xem `serving/ui/index.html`.
+                    "content": hit.chunk.content,
                 }
             )
         return out
@@ -393,10 +432,18 @@ class ChatTurn:
 
         ⚠️ Đo được bằng lượt chạy thật, không bằng test: bộ test đơn vị tắt
         cache, và `W4-10` chỉ kiểm khung SSE — đúng chỗ dữ liệu vẫn đúng.
+
+        ## ⭐⭐ `W6-01`: và **không** mang `content` xuống Postgres
+
+        Khung SSE giờ chở nguyên văn chunk để UI nhảy tới chỗ được trích. Hàng
+        Postgres thì không được: nó là **bản sao thứ hai của index**, phình mỗi
+        hàng lịch sử từ ~1 KB lên ~8 KB, và nó sẽ đi tiếp vào file ứng viên
+        golden set của `W5-08`. Cùng một danh sách nguồn phục vụ hai mục đích
+        khác nhau, nên nó phải là hai payload khác nhau — và sự khác nhau ấy
+        phải viết ra ở một chỗ, chứ không để mỗi chỗ đọc tự nhớ.
         """
-        if self.cached is not None:
-            return list(self.cached.sources)
-        return self.sources()
+        raw = list(self.cached.sources) if self.cached is not None else self.sources()
+        return [{k: v for k, v in source.items() if k != "content"} for source in raw]
 
     def prompt(self) -> list[ChatMessage]:
         directive = self.plan.directive()
@@ -502,6 +549,18 @@ class ChatService:
     câu trả lời của hai model, và hỏng theo kiểu im lặng nhất — `200 OK`, câu
     trả lời trôi chảy, sai hệ thống. Thà mất cache còn hơn phát lại lời của một
     model khác.
+    """
+
+    endpoint: str = ""
+    """Máy chủ nào đã phục vụ `generator` — trục thứ tư của namespace. `W6-01`.
+
+    Tách khỏi `generator` chứ không nhét vào: `generator` còn là tín hiệu
+    failover và URL có dấu `:` sẽ làm phép tách ấy sai. Xem `cache_namespace`.
+
+    Rỗng ở đây **không** tắt cache (khác `generator`): một triển khai chỉ có
+    đúng một endpoint là bình thường, và bắt nó khai một chuỗi rỗng-nhưng-nhất-
+    quán không mua thêm gì. Thứ nó chặn là hai endpoint **khác nhau** dùng chung
+    một ô, và điều đó cần hai giá trị khác nhau chứ không cần một giá trị.
     """
 
     extra_body: Mapping[str, Any] | None = None
@@ -680,7 +739,9 @@ class ChatService:
                     assert cache_vector is not None
                     cached = await self.cache.lookup(
                         principal.tenant_id,
-                        cache_namespace(snapshot.version, resolved_top_k, self.generator),
+                        cache_namespace(
+                            snapshot.version, resolved_top_k, self.generator, self.endpoint
+                        ),
                         plan.question,
                         cache_vector,
                     )
@@ -1108,7 +1169,9 @@ class ChatService:
                 store_task = asyncio.get_running_loop().create_task(
                     self.cache.store(
                         turn.principal.tenant_id,
-                        cache_namespace(turn.bundle_version, turn.resolved_top_k, self.generator),
+                        cache_namespace(
+                            turn.bundle_version, turn.resolved_top_k, self.generator, self.endpoint
+                        ),
                         turn.plan.question,
                         turn.cache_vector,
                         text="".join(emitted),

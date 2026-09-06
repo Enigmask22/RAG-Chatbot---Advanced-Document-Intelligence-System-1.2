@@ -49,11 +49,17 @@ __all__ = ["ADMIN_PREFIX", "PUBLIC_PATHS", "AuthMiddleware", "principal_of"]
 
 logger = logging.getLogger(__name__)
 
-PUBLIC_PATHS = frozenset({"/health", "/ready"})
+PUBLIC_PATHS = frozenset({"/", "/health", "/ready"})
 """Danh sách **đóng**, và có test đếm lại nó với `app.routes`.
 
 Cố ý là tập đường dẫn chính xác chứ không phải tiền tố: một tiền tố `/health`
 cũng mở luôn `/health-internal-debug` mà không ai nhận ra.
+
+⭐ `/` (`W6-01`) là **trang tĩnh**, không phải một endpoint dữ liệu: nó không đọc
+bundle, không chạm Postgres, không biết gì về tenant. Mọi lời gọi nó phát ra
+(`/chat`, `/feedback`, `/admin/ingest`) vẫn cần khoá như trước — trang chỉ là
+chỗ người dùng gõ khoá vào. Bắt nó xác thực sẽ tạo ra một bài toán con gà–quả
+trứng: không có giao diện để nhập khoá thì không có cách nhập khoá.
 """
 
 ADMIN_PREFIX = "/admin"

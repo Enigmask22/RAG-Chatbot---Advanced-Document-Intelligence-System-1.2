@@ -378,7 +378,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--duration", type=int, default=60)
     parser.add_argument("--cooldown", type=int, default=10)
     parser.add_argument("--host", default="http://127.0.0.1:8000")
-    parser.add_argument("--stub-url", default="http://127.0.0.1:8099")
+    parser.add_argument("--stub-url", default="http://127.0.0.1:8199")
     parser.add_argument("--metrics-url", default="http://127.0.0.1:8000/metrics")
     parser.add_argument("--metrics-token", default="")
     parser.add_argument("--label", default="w605")
