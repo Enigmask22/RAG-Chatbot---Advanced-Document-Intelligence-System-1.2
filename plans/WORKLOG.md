@@ -5032,3 +5032,108 @@ ghi từ `TD-72`: HF Spaces tier miễn phí *ngủ* rồi cold-start, và khở
 Vẫn chờ bạn: **SLO TTFT** (⏳ trong `G2`) · **`NEW-11`** (quyết định về upload) ·
 **`TD-13`** (điều kiện duy nhất còn thiếu của `G1`, và `W6-03`/`W6-07` sắp cần nó
 để bỏ chữ "model-reviewed").
+
+---
+
+## 2026-09-07 — Docker lấy lại 44,5 GB · `W6-02` bị phép đo lật · `W6-03` + `W6-04` xong
+
+Chi phí phiên: **$0**.
+
+### Docker: 44,5 GB về ổ D, và một volume 13 GB hoá ra nặng 1,2 GB
+
+`diskpart compact vdisk` chạy thật (cần quyền admin, người dùng chạy): **61,61 →
+17,05 GiB**, ổ D từ 144,9 lên **189,4 GB** trống. Kiểm chứng sau nén: 10/10 volume
+nguyên, 19/19 collection Qdrant `green`, không mất một điểm nào.
+
+⭐⭐ **`docker system df` nói dối về volume, và cái nói dối ấy chỉ sai đường.** Nó
+báo `rag-platform_qdrant_data` = 13,04 GB. Đo hai cách trên cùng volume: `du -smb`
+= **12 449 MB** (biểu kiến), `du -sm` = **1 207 MB** (block thật). Qdrant cấp phát
+trước từng trang 32 MB cho mỗi segment (`page_0.dat`, `wal/open-*`) dưới dạng file
+**sparse** — khai 32 MB, chiếm vài chục KB. Toàn bộ 11 volume cộng lại chỉ ~1,4 GB
+block thật; thủ phạm luôn là build cache và image.
+
+⚠️ Hệ quả: nhìn `13.04GB` rồi kết luận "volume là thủ phạm" dẫn thẳng tới
+`docker volume prune` — đúng cái lệnh `DOCKER-DISK.md` cấm. Cái bẫy `container
+prune` và cái bẫy sparse chỉ về **cùng một hành động sai**, từ hai hướng khác nhau.
+
+⚠️ Và tôi đã dùng chính con số sai ấy để biện minh cho luật an toàn: bản đầu của
+`DOCKER-DISK.md` viết "index Qdrant 12 GB" — một lý lẽ **đúng** dựa trên một số
+liệu **sai**. Lý do thật để không xoá index là **hàng giờ GPU** dựng lại. Sửa ở cả
+`DOCKER-DISK.md` lẫn `Makefile`, vì một lý lẽ chống được `prune` chỉ khi nó không
+sụp lúc ai đó đi đo lại.
+
+⚠️ Chưa dọn (để người dùng quyết): 10 collection chết trong Qdrant (`dbg2..dbg5`,
+`dbg_p0/p3/p9`, `dbg_incr`, `test_dense_*`, `test_hybrid_*`) — 0 tham chiếu trong
+repo, không bundle nào trỏ tới, ~30 MB block thật và **0 byte** về ổ D cho tới lần
+nén sau. Lệnh `DELETE` cũng bị classifier chặn.
+
+### ⭐⭐ `W6-02`: cả hai nửa tên hạng mục đều sai, và phép đo nói trước khi dựng
+
+Hạng mục ghi *"HF Spaces demo (API-only, không GPU)"*.
+
+**"Không GPU" không chạy nổi.** `bge-reranker-v2-m3` trên 2 vCPU (giả lập tier
+miễn phí bằng `torch.set_num_threads(2)`, đặt biến OMP/MKL **trước** khi torch nạp
+vì thread pool chỉ đọc chúng lúc khởi tạo): `c=50` của bundle `0.2.1` mất
+**88,1 s** — gấp **3×** *toàn bộ* ngân sách 30 s của `G6`, chỉ riêng một bước.
+`c=20`: 37,7 s. `c=10`: 18,4 s, ô duy nhất lọt, và cộng 4,9 s sinh thì dư 6,5 s
+trên một phép đo vốn là **cận dưới** — nhân laptop nhanh hơn vCPU chia sẻ. Cộng
+cold-start nạp model 46 s + 11 s, trong khi tier miễn phí **ngủ**.
+
+**"API-only" cũng sai, vì tier CPU miễn phí không tồn tại.** Tài liệu HF: *"Gradio
+and Docker Spaces run on compute and **require a paid plan** to create… Free
+personal accounts in good standing can still host up to **2 Gradio Spaces running
+on ZeroGPU**."* Tài khoản `johnenigmask12` **không PRO** ⇒ đường duy nhất miễn phí
+có tính toán phía máy chủ là **ZeroGPU**, tức **bắt buộc GPU** và model chạy
+**trong** Space — ngược hẳn tên hạng mục. Và chính ràng buộc ấy giải bài toán 88 s.
+
+⚠️ Giá phải trả: ZeroGPU **chỉ nhận Gradio SDK**, nên trang HTML tĩnh của `W6-01`
+không dùng lại được. Hạn mức khách 2 phút GPU/ngày (chưa đăng nhập).
+⚠️ Bỏ rerank không phải lối thoát rẻ: `EXP-001` đã đo `ndcg@10` 0,6481 (`c=50`) →
+0,4563 (không rerank), mất **29,6%**.
+
+**Quyết định người dùng:** sinh bằng **DeepSeek + hạn mức cứng** ($0,001–0,002/câu
+⇒ trần 500 câu/ngày ≈ $1/ngày), và **hoãn `W6-02` sau `W6-03`/`W6-04`**.
+
+### `W6-03` + `W6-04` xong — và ba lỗi rơi ra trong lúc viết
+
+Năm tài liệu: `README.md` · `README.vi.md` (bản **đầy đủ**) · `ARCHITECTURE.md` ·
+`EVALUATION.md` · `BUNDLE.md`. Chi tiết ở
+[`reports/tasks/w6-03-04-docs.md`](reports/tasks/w6-03-04-docs.md).
+
+⭐⭐ **README cũ khai `W4 0/13`, `W5 0/11`, `W6 0/8` — "chưa bắt đầu"** trong khi ba
+giai đoạn ấy đã 13/13, 11/11 và 2/8, và khai "1.436 tests" khi đã có 2.892. **Tài
+liệu không hỏng, nó chỉ thôi đúng**, và không gì đỏ vì không gì đọc nó. Nên hạng
+mục kết thúc bằng một bộ test.
+
+⭐⭐ **`docker-compose.yml` làm chết tầng `bundles/CURRENT`** — `${BUNDLE_VERSION:-0.2.0}`
+làm tầng 1 luôn nổ, nên tầng 2 (đường production của `W5-10`) là **mã chết trong
+chính môi trường giống production nhất của repo**. Container phục vụ `0.2.0` còn
+mọi tài liệu và `make gate` nói về `0.2.1`, `/ready` xanh suốt. → `NEW-13` ✅
+
+⭐⭐ **`/ready` nói sai chiều lệch migration.** `found != want` phủ hai chiều, câu
+chữ chỉ viết cho một. Gặp thật: DB `0005`, mã cần `0003` — DB đi **trước**, và lời
+khuyên "chạy `alembic upgrade head`" là một lệnh không làm gì.
+
+⭐ **Bài e2e duy nhất nối "cái đã đo" với "cái đang chạy" cũng là bài duy nhất
+không có chốt skip** — tức bài tệ nhất để người ta học cách bỏ qua.
+
+⚠️ **Tiêm 15/15 đỏ sau ba lượt.** Đáng nhất: **một bài test khẳng định "không skip"
+tự nó không thể đỏ** — `pytest.skip()` ném ra giữa thân test thì pytest ghi bài ấy
+là *skipped*, exit 0. Ba lỗ còn lại cùng họ "chuỗi có xuất hiện đâu đó không", và
+mỗi cái được cứu bởi bản sao gần nhất của chính nó.
+
+### Đo cuối
+
+**33 test mới** · **2 870 xanh, 22 skip** bộ mặc định (container API bật) ·
+2 892 thu thập · ruff / mypy sạch · **15/15** tiêm đỏ · **$0**.
+
+### Việc tiếp theo
+
+`W6` còn **3/8**: `W6-02` demo ZeroGPU · `W6-07`/`W6-08` CV.
+
+**`W6-02` là bước kế**, giờ đã có thiết kế: Gradio + ZeroGPU, DeepSeek + hạn mức
+cứng, §8 của `security-final.md` là danh sách phải làm trước khi bấm nút.
+
+Vẫn chờ bạn: **SLO TTFT** (⏳ trong `G2`) · **`NEW-11`** (quyết định về upload) ·
+**`TD-13`** (điều kiện duy nhất còn thiếu của `G1` — và `EVALUATION.md` §0 giờ nói
+thẳng ra điều đó ở ngay dòng đầu, nên nó càng đáng đóng).
