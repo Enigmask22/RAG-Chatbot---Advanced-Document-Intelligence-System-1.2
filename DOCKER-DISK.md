@@ -19,6 +19,31 @@ Ba con số cần so với nhau:
 
 Số thứ ba lớn hơn hẳn số thứ hai là bình thường, và đó chính là vấn đề.
 
+### ⭐⭐ Nhưng đừng tin số thứ nhất khi nó nói về volume
+
+`docker system df` báo `rag-platform_qdrant_data` là **13,04 GB**. Đo lại bằng
+hai cách trên cùng một volume:
+
+```
+du -smb /v   →  12 449 MB   (kích thước biểu kiến, tính cả lỗ)
+du -sm  /v   →   1 207 MB   (block thật sự cấp phát)
+```
+
+Qdrant cấp phát trước từng trang `32 MB` cho mỗi segment (`page_0.dat`,
+`wal/open-*`) dưới dạng **file sparse** — file khai 32 MB nhưng chỉ chiếm vài
+chục KB block. `docker system df` cộng kích thước biểu kiến, nên nó phóng đại
+volume này lên hơn **10×**.
+
+⚠️ Hệ quả rất thực tế: nhìn `13.04GB` rồi kết luận "volume là thủ phạm" là sai
+đường, và cái sai ấy dẫn thẳng tới `docker volume prune`. Thủ phạm thật ở đây
+luôn là **build cache** và **image**. Toàn bộ 11 volume cộng lại chỉ khoảng
+**1,4 GB** block thật.
+
+⚠️ Và đừng dùng con số phồng ấy để biện minh cho luật an toàn bên dưới. Lý do
+không xoá index Qdrant là **hàng giờ GPU để dựng lại**, không phải dung lượng
+nó chiếm — bản đầu của tài liệu này viết "index Qdrant 12 GB" và đó là con số
+đọc từ `docker system df`, tức một lý lẽ đúng dựa trên một số liệu sai.
+
 ## ⭐⭐ Hai nguyên nhân, và chúng độc lập nhau
 
 ### 1. Build cache phình im lặng
@@ -56,8 +81,8 @@ wsl --manage docker-desktop --set-sparse true
 ```
 
 Có cờ `--allow-unsafe` để ép. **Không dùng** trên máy này: cùng cái đĩa ấy đang
-giữ `rag-platform_qdrant_data` (~12 GB, 20.424 chunk BGE-M3 — dựng lại tốn hàng
-giờ GPU) và `rag-platform_postgres_data` (lịch sử hội thoại + feedback `W5-08`).
+giữ `rag-platform_qdrant_data` (20.424 chunk BGE-M3 — dựng lại tốn hàng giờ GPU)
+và `rag-platform_postgres_data` (lịch sử hội thoại + feedback `W5-08`).
 Đổi vài GB lấy rủi ro hỏng cả hai là một cuộc đổi tồi.
 
 ## Cách lấy lại dung lượng — nén một lần, cần quyền admin
@@ -90,11 +115,15 @@ exit
 `attach vdisk readonly` là điểm đáng chú ý: đĩa được gắn ở chế độ **chỉ đọc**
 trong lúc nén, nên không có đường nào để thao tác này sửa dữ liệu bên trong.
 
+**Đo được khi chạy thật (07/09/2026):** `61,61 GiB → 17,05 GiB`, ổ D từ 144,9 GB
+lên **189,4 GB** trống — lấy lại **44,5 GB**. Sau đó kiểm chứng: 10/10 volume còn
+nguyên, 19/19 collection Qdrant `green`, không mất một điểm nào.
+
 ## ⚠️⚠️ Những lệnh KHÔNG được gõ trên máy này
 
 | lệnh | mất gì |
 |---|---|
-| `docker volume prune` | **index Qdrant 12 GB** + lịch sử hội thoại + feedback |
+| `docker volume prune` | **index Qdrant** (20.424 chunk, hàng giờ GPU) + lịch sử hội thoại + feedback |
 | `docker system prune -a` | mọi thứ ở trên, cộng image `rag-serving:local` (7 GB, 6 phút build lại) |
 | `docker desktop` → *Reset disk image* | toàn bộ, không hoàn tác được |
 | `wsl --manage … --set-sparse --allow-unsafe` | rủi ro hỏng dữ liệu, xem trên |

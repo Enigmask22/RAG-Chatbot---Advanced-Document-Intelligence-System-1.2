@@ -81,6 +81,11 @@ smoke:  ## `W4-13`: e2e qua compose thật — cần `make up-api` trước
 docker-usage:  ## Docker đang chiếm bao nhiêu, và bao nhiêu là rác
 	@docker system df
 	@echo
+	@echo "⭐ Volume: kích thước BIỂU KIẾN (docker system df đếm cái này) vs BLOCK THẬT."
+	@echo "   Qdrant cấp phát trước từng trang 32 MB dạng sparse ⇒ hai số lệch ~10×."
+	@docker run --rm -v rag-platform_qdrant_data:/v alpine:3.20 sh -c \
+	  'echo "   qdrant_data: $$(du -smb /v | cut -f1) MB biểu kiến / $$(du -sm /v | cut -f1) MB thật"' || true
+	@echo
 	@echo "Đã dùng THẬT bên trong đĩa ảo (so con số này với kích thước vhdx):"
 	@wsl -d docker-desktop -e sh -c \
 	  'nsenter -t 1 -m -- df -h /mnt/docker-desktop-disk 2>/dev/null | tail -1' || true
@@ -99,8 +104,11 @@ docker-clean:  ## Dọn build cache + image mồ côi. KHÔNG đụng volume (in
 # gì hiện ra ở `docker images`.
 #
 # ⚠️⚠️ CỐ Ý KHÔNG có `docker volume prune` và KHÔNG có `system prune -a`:
-#   * `rag-platform_qdrant_data` là **index thật** (~12 GB, 20.424 chunk BGE-M3).
-#     Dựng lại nó tốn hàng giờ GPU.
+#   * `rag-platform_qdrant_data` là **index thật** — 7 collection còn sống,
+#     20.424 chunk BGE-M3. Dựng lại nó tốn hàng giờ GPU.
+#     ⭐ Nó chỉ chiếm **1,2 GB** block thật, KHÔNG phải 13 GB như `docker system
+#     df` báo — xem `docker-usage` bên trên. Giá trị của nó là giờ GPU, không
+#     phải dung lượng; đừng để con số phồng làm mờ lý do thật.
 #   * `rag-platform_postgres_data` giữ lịch sử hội thoại + feedback của `W5-08`.
 #   * `rag-serving:local` (7 GB) mất đi là 6 phút build lại cho mỗi lần `make smoke`.
 #
