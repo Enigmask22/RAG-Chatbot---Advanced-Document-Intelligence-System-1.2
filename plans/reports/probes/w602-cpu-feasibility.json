@@ -1,0 +1,67 @@
+{
+  "probe": "w602-cpu-feasibility",
+  "cau_hoi": "Space tier mien phi (2 vCPU, khong GPU) co chay noi pipeline nay khong?",
+  "may_do": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+    "torch_threads": 2,
+    "cpu_count_that": 16
+  },
+  "canh_bao": "Day la CAN DUOI cua thoi gian: vCPU chia se cua Space cham hon nhan cua laptop nay. Ket luan 'khong kha thi' la chac chan; ket luan 'kha thi' phai do lai tren chinh Space.",
+  "rss_truoc_khi_nap_mb": 488.93359375,
+  "n_chunk_that": 50,
+  "do_dai_chunk_ky_tu": {
+    "median": 1506,
+    "max": 1752
+  },
+  "nap_embedder_ms": 45982.0,
+  "rss_sau_embedder_mb": 2257.00390625,
+  "nap_reranker_ms": 11092.9,
+  "rss_sau_reranker_mb": 3742.5234375,
+  "embed_query": {
+    "min_ms": 194.4,
+    "median_ms": 195.0,
+    "max_ms": 222.9,
+    "n": 3
+  },
+  "rerank": {
+    "c50": {
+      "min_ms": 87401.9,
+      "median_ms": 88069.8,
+      "max_ms": 89929.3,
+      "n": 3
+    },
+    "c20": {
+      "min_ms": 36990.9,
+      "median_ms": 37671.4,
+      "max_ms": 37736.1,
+      "n": 3
+    },
+    "c10": {
+      "min_ms": 18358.5,
+      "median_ms": 18392.8,
+      "max_ms": 18453.8,
+      "n": 3
+    }
+  },
+  "ket_luan": {
+    "c50": {
+      "embed_cong_rerank_ms": 88264.8,
+      "phan_tram_ngan_sach_30s": 294.2,
+      "cong_them_sinh_4900ms": 93164.8,
+      "vuot_30s": true
+    },
+    "c20": {
+      "embed_cong_rerank_ms": 37866.4,
+      "phan_tram_ngan_sach_30s": 126.2,
+      "cong_them_sinh_4900ms": 42766.4,
+      "vuot_30s": true
+    },
+    "c10": {
+      "embed_cong_rerank_ms": 18587.8,
+      "phan_tram_ngan_sach_30s": 62.0,
+      "cong_them_sinh_4900ms": 23487.8,
+      "vuot_30s": false
+    }
+  }
+}
