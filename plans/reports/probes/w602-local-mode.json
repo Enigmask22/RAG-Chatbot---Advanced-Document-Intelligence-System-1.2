@@ -1,0 +1,20 @@
+{
+  "probe": "w602-local-mode",
+  "cau_hoi": "qdrant-client local mode co chay noi duong truy hoi hien tai khong",
+  "buoc": {
+    "ensure_collection": "OK",
+    "upsert": "OK",
+    "count": "OK",
+    "retrieve_dense": "OK",
+    "retrieve_sparse": "OK",
+    "hybrid_query_batch_points": "OK",
+    "hybrid_with_filter": "OK",
+    "scroll": "OK",
+    "fetch_chunks": "OK"
+  },
+  "ket_qua": "9/9",
+  "canh_bao_client_tu_phat": [
+    "Payload indexes have no effect in the local Qdrant. Please use server Qdrant if you need payload indexes."
+  ],
+  "ket_luan": "Chay duoc nguyen duong code — Space KHONG can cai lai truy hoi. Danh doi duy nhat: payload index khong co tac dung o local mode nen filter quet tuyen tinh."
+}

@@ -579,3 +579,27 @@ job-bundle:  ## W0-08: dựng gói job cho RunPod (git archive + gói request)
 .PHONY: job-verify
 job-verify:  ## W0-08: quét bí mật trong gói job. CHẠY TRƯỚC KHI ĐẨY LÊN POD
 	bash scripts/runpod_job.sh verify
+
+# --------------------------------------------------------------------------
+# W6-02 — demo công khai trên HF Spaces + ZeroGPU
+# --------------------------------------------------------------------------
+
+.PHONY: space-probe
+space-probe:  ## W6-02: qdrant-client local mode có chạy nổi đường truy hồi thật không (9 bước)
+	$(PY) python scripts/probe_local_mode.py
+
+.PHONY: space-index
+space-index:  ## W6-02: Qdrant server → kho local mode ở dist/space-index (cần `make up`)
+	$(PY) python scripts/export_local_index.py --out dist/space-index --force
+
+.PHONY: space-run
+space-run:  ## W6-02: chạy thử app Gradio trên máy (cần GPU + dist/space-index)
+	SPACE_INDEX_DIR=dist/space-index SPACE_BUNDLE_ROOT=bundles $(PY) python space/app.py
+
+.PHONY: space-stage
+space-stage:  ## W6-02: lắp thư mục gửi đi và in ra, KHÔNG đẩy lên HF
+	$(PY) python scripts/deploy_space.py --dry-run
+
+.PHONY: space-deploy
+space-deploy:  ## W6-02: đẩy Space. ⚠️ CÔNG KHAI. Đòi cây sạch + commit đã có trên GitHub
+	$(PY) python scripts/deploy_space.py

@@ -103,6 +103,17 @@ ui = [
     "playwright>=1.47",
     "pytest-playwright>=0.5",
 ]
+# `W6-02`. Demo công khai trên HF Spaces + ZeroGPU.
+#
+# ⚠️ `spaces` khai ở ĐÂY nhưng **không** được có mặt trong `space/requirements.txt`:
+# nền tảng Space tự ghim phiên bản của nó, và một ghim thứ hai làm pip resolve
+# hỏng lúc build. Khai ở đây để uv thấy được ràng buộc bắc cầu của nó (đáng kể
+# nhất là `psutil`) và để `python space/app.py` chạy được trên máy dev — ngoài
+# ZeroGPU thì `import spaces` là no-op thật, không cần try/except.
+space = [
+    "gradio>=5.0",
+    "spaces>=0.30",
+]
 # MLflow chỉ dùng ở **pipeline plane** (theo dõi thí nghiệm offline). Để nó ngoài
 # `pipeline` extra vì nó kéo theo cả một web stack (flask, alembic, sqlalchemy,
 # gunicorn/waitress) chỉ để phục vụ UI — CI chạy unit test không cần thứ đó, và
@@ -169,28 +180,52 @@ ignore = [
 
 [tool.ruff.lint.isort]
 # `rag_core` sống trong `packages/` nên ruff không tự nhận ra là first-party.
-known-first-party = ["rag_core", "pipeline", "serving"]
+# `guard`/`zerogpu` là mã của `space/`, nạp theo tên trần vì đó là cách HF Spaces
+# chạy `app.py` — cùng lý do chúng cần một dòng ở `mypy_path` và `pythonpath`.
+known-first-party = ["rag_core", "pipeline", "serving", "guard", "zerogpu"]
 
 # --------------------------------------------------------------------------
 # Mypy
 # --------------------------------------------------------------------------
 [tool.mypy]
 python_version = "3.12"
-mypy_path = "packages"
-files = ["packages", "pipeline", "serving", "tests"]
+mypy_path = "packages:space"
+# `space` nằm trong danh sách này có chủ ý: mã chạy trên demo công khai chịu
+# đúng mức kiểm như mã production. Nó **không** phải một package (`app.py` nạp
+# `guard`/`zerogpu` theo tên trần vì đó là cách HF Spaces chạy), nên đường nạp
+# đi qua `mypy_path` chứ không qua import tuyệt đối.
+files = ["packages", "pipeline", "serving", "tests", "space"]
 exclude = ["^legacy/"]
 strict = true
 warn_unreachable = true
 # Thư viện bên thứ ba chưa có type stub — không để chúng làm hỏng strict mode của code mình
 [[tool.mypy.overrides]]
-module = ["sentence_transformers.*", "qdrant_client.*", "torch.*", "pypdfium2.*", "locust.*"]
+module = [
+    "sentence_transformers.*",
+    "qdrant_client.*",
+    "torch.*",
+    "pypdfium2.*",
+    "locust.*",
+    "spaces.*",
+]
 ignore_missing_imports = true
+
+# `@spaces.GPU` không có stub, nên strict mode gọi mọi hàm nó bọc là "untyped".
+# Nới đúng hai luật ấy cho đúng một module — chỗ duy nhất chạm tới decorator —
+# thay vì tắt strict cho cả `space/`.
+[[tool.mypy.overrides]]
+module = ["zerogpu"]
+disallow_untyped_decorators = false
+warn_return_any = false
 
 # --------------------------------------------------------------------------
 # Pytest
 # --------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `space/` không phải package (xem ghi chú ở `[tool.mypy]`), nên test của nó
+# nạp `guard`/`zerogpu` theo tên trần — giống hệt cách `app.py` nạp trên Space.
+pythonpath = ["space"]
 # ⚠️ `-q` ĐÃ CÓ Ở ĐÂY — đừng thêm `-q` trên dòng lệnh nữa.
 # `pytest -q` cộng với dòng này thành `-qq`, và `-qq` **tắt hẳn** dòng tổng kết
 # ("974 passed in 267s"). Hệ quả không phải mỹ quan: ở `W2-05` tôi gõ `-q` theo

@@ -1,0 +1,24 @@
+# Phụ thuộc của HF Space. `W6-02`.
+#
+# ⭐⭐ Dòng dưới là lý do demo này ĐÁNG TIN: `rag_core` và `serving` không được
+# chép vào Space, chúng cài từ chính repo, ghim theo commit. Một bản chép sẽ
+# trôi khỏi bản gốc và demo sẽ dần trình diễn một hệ thống khác hệ thống có số
+# đo — họ `AU-12`, và ở đây là phiên bản đắt nhất của nó. Ghim SHA (không phải
+# `@main`) vì `@main` nghĩa là mỗi lần Space build lại là một hệ thống khác.
+#
+# SHA do `scripts/deploy_space.py` điền, không gõ tay.
+rag-platform[embeddings,qdrant,llm,serving] @ git+https://github.com/Enigmask22/RAG-Chatbot@__GIT_SHA__
+
+# ⚠️ `spaces` cố ý KHÔNG có ở đây. Nền tảng Space tự ghim phiên bản của nó, và
+# một ghim thứ hai làm pip resolve hỏng lúc build. Nó vẫn được khai ở
+# `pyproject.toml` (extra `space`) để chạy thử được trên máy dev.
+#
+# ⚠️ `gradio` cũng KHÔNG có ở đây: với Gradio SDK, phiên bản do `sdk_version`
+# trong frontmatter của `README.md` quyết định. Ghim ở hai chỗ là hai nguồn sự
+# thật cho một con số.
+
+# torch ghim đúng major.minor của môi trường đã eval. Tài liệu ZeroGPU liệt kê
+# tới 2.11 nhưng nói "almost all versions from 2.8.0 to latest"; nếu bản này
+# không chạy được thì đó là một số đo phải ghi lại, không phải một thứ để đoán
+# trước. Xem `TD-87`.
+torch==2.13.0

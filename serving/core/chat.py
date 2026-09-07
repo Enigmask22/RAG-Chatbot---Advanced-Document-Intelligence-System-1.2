@@ -533,7 +533,22 @@ class ChatService:
     """
 
     registry: BundleRegistry
+
     sessions: async_sessionmaker[AsyncSession] | None
+    """`None` = chạy **không trạng thái**: không lịch sử, không ghi gì xuống đâu.
+
+    ⭐⭐ Cho tới `W6-02` kiểu này nói dối. Nó khai `| None` từ đầu, còn dòng thứ
+    hai của `_prepare` thì `raise GenerationUnavailable("chưa cấu hình Postgres")`
+    — nên ai đọc chữ ký cũng dựng được đúng một cấu hình mà mã từ chối phục vụ,
+    và biết điều đó ở *runtime*. Tôi là người ấy: HF Space không có Postgres, và
+    tôi lắp `sessions=None` vì chữ ký cho phép.
+
+    Chế độ này có thật và có người dùng: một endpoint RAG không lưu vết. Cái giá
+    khai ra ở đây — truyền `conversation_id` vào một service không trạng thái là
+    `ConversationNotFound`, **không** phải im lặng bỏ qua: im lặng bỏ qua để
+    client tin nó có mạch hội thoại trong khi mỗi lượt là một lượt độc lập.
+    """
+
     llm: StreamingLLM | None
     top_k: int = 5
     max_tokens: int = 1024
@@ -649,8 +664,6 @@ class ChatService:
             raise GenerationUnavailable(
                 "chưa cấu hình LLM cho serving — đặt `DEEPSEEK_API_KEY` rồi khởi động lại"
             )
-        if self.sessions is None:
-            raise GenerationUnavailable("chưa cấu hình Postgres cho serving")
         # ⭐ `W4-08`: hỏi trần chi phí **trước** khi tốn một lượt truy hồi, và
         # trước khi byte đầu tiên rời đi. Sau `200 OK` thì "hết ngân sách" chỉ
         # còn là một dòng SSE dừng lại — cùng đường phân giới ở docstring module.
@@ -1258,7 +1271,12 @@ class ChatService:
     ) -> list[ChatMessage]:
         if conversation_id is None:
             return []
-        assert self.sessions is not None
+        if self.sessions is None:
+            # Không có kho thì không có hội thoại nào để tiếp — và nói ra chứ
+            # không trả `[]`. Xem docstring của `sessions`.
+            raise ConversationNotFound(
+                f"service chạy không trạng thái nên không có hội thoại {conversation_id!r}"
+            )
         async with atenant_session(self.sessions, principal.tenant_id) as session:
             exists = await session.scalar(
                 select(Conversation.id).where(Conversation.id == conversation_id)
@@ -1297,7 +1315,11 @@ class ChatService:
         đâu cả. Mất câu trả lời thì họ hỏi lại được; mất câu hỏi thì lịch sử nói
         dối về chuyện đã xảy ra.
         """
-        assert self.sessions is not None
+        if self.sessions is None:
+            # Id vẫn phát ra: khung `meta` và `answer_message_id` là hợp đồng
+            # với client, không phải hệ quả của việc có Postgres. Chúng chỉ
+            # không trỏ tới hàng nào.
+            return conversation_id or str(uuid.uuid4()), str(uuid.uuid4())
         async with atenant_session(self.sessions, principal.tenant_id) as session:
             if conversation_id is None:
                 conversation = Conversation(
@@ -1356,7 +1378,8 @@ class ChatService:
                 finish_reason,
             )
             return
-        assert self.sessions is not None
+        if self.sessions is None:
+            return
         try:
             async with atenant_session(self.sessions, turn.principal.tenant_id) as session:
                 session.add(

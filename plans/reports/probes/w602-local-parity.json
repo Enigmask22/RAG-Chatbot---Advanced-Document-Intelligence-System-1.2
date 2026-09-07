@@ -1,0 +1,15 @@
+{
+  "probe": "w602-local-parity",
+  "n_queries": 30,
+  "top_k": 20,
+  "overlap_at_20": {
+    "mean": 1.0,
+    "min": 1.0,
+    "n_perfect": 30
+  },
+  "top1_identical": "30/30",
+  "latency_ms": {
+    "server_median": 719.6,
+    "local_median": 1546.9
+  }
+}

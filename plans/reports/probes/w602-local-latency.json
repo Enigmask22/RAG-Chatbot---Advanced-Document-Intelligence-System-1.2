@@ -1,0 +1,12 @@
+{
+  "probe": "w602-local-latency",
+  "mo_kho_s": 2.67,
+  "rss_mb": {
+    "sau_embedder": 2519.9,
+    "kho_local_them": null
+  },
+  "embed_query_hybrid_ms": 11.5,
+  "dense_only_c50_ms": 77.0,
+  "sparse_only_c50_ms": 764.4,
+  "hybrid_c50_ms": 726.3
+}
