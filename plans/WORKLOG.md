@@ -5122,10 +5122,31 @@ tự nó không thể đỏ** — `pytest.skip()` ném ra giữa thân test thì
 là *skipped*, exit 0. Ba lỗ còn lại cùng họ "chuỗi có xuất hiện đâu đó không", và
 mỗi cái được cứu bởi bản sao gần nhất của chính nó.
 
+### ⚠️ Một lỗi quy trình của tôi, và bài test đã bắt được nó
+
+CI đỏ ở tầng unit sau khi push: `test_checklist_dashboard.py`. Không phải lỗi mã —
+đúng thứ bài test ấy tồn tại để bắt.
+
+Tôi chạy **toàn bộ** bộ test **xong rồi mới** sửa `CHECKLIST.md`, và sau đó chỉ
+chạy lại bốn file test mới. Bảng đếm §1 lệch từ lúc ấy tới lúc CI nói. **Sửa
+`CHECKLIST.md` là sửa một thứ có test canh**, nên nó phải kéo theo một lượt
+`make test`, không phải một lượt chạy chọn lọc.
+
+⭐ Và hàng `NEW-13` tôi thêm **sai cấu trúc** nên bộ đếm không nhìn thấy: bảng §9
+có năm cột (`ID · Task · Phát sinh từ · Trạng thái · Ngày thêm`), tôi viết hai và
+nhét dấu ✅ vào ô ID, nên `_TABLE_ROW` (regex đòi ô ID chỉ chứa ``NEW-xx`` trong dấu backtick) trượt. Hệ quả đáng
+chú ý hơn cả bản vá: **một hàng nợ vô hình với bộ đếm là một hàng nợ có thể biến
+mất khỏi mọi con số tổng trong khi bảng vẫn trông đầy đủ.**
+
+Số đúng: backlog gốc **62 xong / 4 chưa** · §9 **13 hàng, 9 xong** · tổng **85 / 71**.
+
 ### Đo cuối
 
 **33 test mới** · **2 870 xanh, 22 skip** bộ mặc định (container API bật) ·
-2 892 thu thập · ruff / mypy sạch · **15/15** tiêm đỏ · **$0**.
+2 892 thu thập · **2 438 xanh** ở đúng lệnh CI (`-m "not integration and not gpu
+and not e2e and not weights"`) · ruff / mypy sạch · **15/15** tiêm đỏ · **$0**.
+
+CI xanh **cả 4 job** trên `7987ee4` (lint · unit · integration · smoke-eval).
 
 ### Việc tiếp theo
 
