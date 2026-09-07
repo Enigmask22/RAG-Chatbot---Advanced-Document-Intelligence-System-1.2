@@ -288,7 +288,69 @@ thích không tồn tại.
 
 ---
 
-## 10. Việc sinh ra từ lượt này
+## 10. ⭐⭐ Ba lượt CI, và cái thứ ba là lỗi đáng ghi nhất của cả hạng mục
+
+### `7d14449` — 3/4 job đỏ, và **exit code 2** chứ không phải một bài đỏ
+
+`pytest` **import mọi module test khi collect**, kể cả module mà `-m` loại ra
+ngay sau đó. Test của hạng mục này nạp `guard`/`zerogpu`, và `zerogpu`
+`import spaces`. Tầng unit và integration không cài `--extra space` ⇒ chết ở
+bước collect.
+
+⭐⭐ Và **bản vá chẩn đoán của `W6-03` không đọc được đúng ca này.** Nó lấy mục
+`short test summary info` — mục chỉ tồn tại khi đã chạy được bài nào. Exit code
+2 là chết *trước* đó, nên bước phát annotation ra rỗng và lượt đỏ lại về đúng
+chữ `"exit code 2"`, y như trước khi có bản vá. Sửa: không có mục summary thì
+phát 25 dòng cuối — *vắng mặt mục ấy tự nó là một chẩn đoán*, không phải một
+chỗ trống. Thêm cùng cơ chế cho `mypy`.
+
+### `c96e293` — 3/4 xanh, `lint` vẫn đỏ, và giờ đọc được
+
+Annotation trả về đúng một dòng:
+
+```
+space/app.py:356: error: "Textbox" has no attribute "submit"
+```
+
+Cùng mã ấy `make lint` **xanh trên máy**. Câu hỏi thật không phải "sửa dòng
+nào" mà **"vì sao hai bên khác nhau"**.
+
+Giả thuyết đầu của tôi: `mypy_path = "packages:space"` tách bằng `os.pathsep`,
+nên là *một* đường dẫn vô nghĩa trên Windows và *hai* trên Linux. **Tự bác bỏ
+bằng `MYPYPATH=space uv run mypy` — vẫn xanh.** (Vẫn bỏ dòng ấy đi: nó sai theo
+một cách khác đáng bỏ, chỉ là không phải nguyên nhân.)
+
+### ⭐⭐ Nguyên nhân thật: mypy xanh trên máy tôi **vì tôi đã chạy app**
+
+Gradio **tự sinh 62 file `.pyi` vào site-packages** lúc class component được
+tạo (`component_meta.create_or_modify_pyi`). Dấu thời gian của
+`gradio/components/textbox.pyi` trên máy này là **14:34** — đúng lúc tôi chạy
+lượt thử đầu-cuối. Nên bề mặt kiểu của gradio chỉ *tồn tại* sau khi ai đó đã
+chạy chương trình:
+
+| | `.pyi` có? | `mypy` |
+|---|---|---|
+| máy dev, đã `make space-run` | có (62 file) | **xanh** |
+| runner CI, chưa bao giờ chạy app | không | **đỏ** |
+
+Đo chứ không suy: chuyển tạm 62 file ấy ra ngoài rồi `mypy --no-incremental`
+cho **đúng một dòng** lỗi của CI. Sau bản vá thì xanh ở **cả hai** trạng thái.
+
+Chú thích ở `ci.yml` đã ghi từ `W5-09`: *"phán quyết của `make lint` không phải
+một tính chất của mã, nó là tính chất của mã **cộng một môi trường**"*. Đây là
+yếu tố **thứ ba**: mã + môi trường + **lịch sử thao tác trong môi trường đó**.
+Và nó hỏng theo chiều nguy hiểm nhất — xanh cho người vừa chạy app, đỏ cho mọi
+người khác, tức người gây ra nó là người duy nhất không nhìn thấy nó.
+
+Bản vá: `gradio.*` khai `follow_imports = "skip"`. Một bề mặt kiểu **sinh lúc
+chạy** không được làm đầu vào của một phép kiểm **tĩnh**. Giá phải trả viết
+thẳng trong `pyproject.toml`: gõ sai tên tham số Gradio không bị mypy bắt —
+nhưng nó chưa từng bị bắt một cách *đáng tin*, vì "có bị bắt hay không" phụ
+thuộc vào việc đã chạy app hay chưa.
+
+---
+
+## 11. Việc sinh ra từ lượt này
 
 * `TD-87` — Space chạy Python/torch khác môi trường eval, và `retriever_name`
   không mã hoá điều đó.
