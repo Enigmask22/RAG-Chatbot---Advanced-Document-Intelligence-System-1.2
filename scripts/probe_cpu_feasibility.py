@@ -39,10 +39,11 @@ QUERY = "Chính sách tiền tệ ảnh hưởng thế nào tới lạm phát tr
 
 def _rss_mb() -> float | None:
     try:
-        import psutil
+        import psutil  # type: ignore[import-untyped]
     except ImportError:
         return None
-    return psutil.Process().memory_info().rss / 1024 / 1024
+    rss: int = psutil.Process().memory_info().rss
+    return rss / 1024 / 1024
 
 
 def _load_chunks(n: int, url: str, collection: str) -> list[str]:

@@ -2,7 +2,7 @@
 
 ***English** · [Tiếng Việt](README.vi.md)*
 
-> This started as a Streamlit RAG proof-of-concept and is being **rebuilt as a
+> This started as a Streamlit RAG proof-of-concept and was **rebuilt as a
 > production platform**. The POC still runs, lives in [`legacy/`](legacy/), and is
 > kept deliberately: it is the **measured baseline** every improvement below is
 > compared against.
@@ -23,15 +23,15 @@ Most RAG demos break on the way to production for the same reason: **there is no
 way to tell whether a change made the system better or worse.** Change the chunk
 size, swap the model, add a reranker — everything "seems better".
 
-This repo is built on two principles, and most of the work went into the second.
+This repo is built on three principles, and most of the work went into the second.
 
-**1. Two separate planes.** The *Pipeline Plane* (offline: ingestion, indexing,
-evaluation, experiments) and the *Serving Plane* (online: user queries) are two
-processes, two lifecycles, two dependency sets. They may only be joined through a
-versioned, immutable artifact. That boundary is **enforced by a test** —
-`tests/unit/test_architecture_boundaries.py` walks the AST and fails CI if
-`rag_core` imports `pipeline`, or if a heavy dependency (`torch`,
-`qdrant_client`) reaches the module level of the core library.
+**1. Two separate planes, joined by one artifact.** The *Pipeline Plane* (offline:
+ingestion, indexing, evaluation, experiments) and the *Serving Plane* (online: user
+queries) are two processes, two lifecycles, two dependency sets. They may only be
+joined through a versioned, immutable [`RagBundle`](plans/reports/tasks/w4-01-rag-bundle.md).
+That boundary is **enforced by a test** — `tests/unit/test_architecture_boundaries.py`
+walks the AST and fails CI if `rag_core` imports `pipeline`, or if a heavy dependency
+(`torch`, `qdrant_client`) reaches the module level of the core library.
 
 **2. No number is stated without a measurement, and no measurement is trusted
 without a significance test.** Comparing two retrieval configurations is a
@@ -40,60 +40,113 @@ paired bootstrap, McNemar, Bonferroni correction when scanning across groups, an
 a distinct flag for *"not enough power to conclude"* — which is not the same
 thing as *"tie"*.
 
+**3. A guarantee that lives only in a deployment convention is not a guarantee.**
+Binding to `127.0.0.1` is erased by one `--host 0.0.0.0` with nothing in the diff.
+Where it was affordable, conventions were moved into code and pinned by a test —
+see [`security-final.md`](plans/reports/tasks/security-final.md) §5.
+
 ---
 
 ## Status
 
 | Phase | Done | Gate | Notes |
 |---|:---:|:---:|---|
-| **W0** · Setup & decisions | 1/8 | — | mostly waiting on rented GPU |
-| **W1** · Foundations + eval baseline | **13/13** | 🟡 | conditional PASS — golden set was model-reviewed, not human-reviewed (`TD-13`) |
-| **W2** · Retrieval upgrade | **10/10** | 🟡 | 1 criterion not yet measurable (end-to-end p95, blocked on `W4-13`) |
-| **W3** · Ingestion + chunking | **7/9** | ⬜ | 2/3 gate criteria met; `W3-04` (needs GPU) and `W3-09` remain |
-| **W4** · Serving Plane | 0/13 | ⬜ | not started |
-| **W5** · Full eval + observability | 0/11 | ⬜ | not started |
-| **W6** · Polish & presentation | 0/8 | ⬜ | not started |
+| **W0** · Setup & decisions | 3/6 | — | 2 in progress; rented-GPU items deferred |
+| **W1** · Foundations + eval baseline | **13/13** | 🟡 | conditional PASS — golden set is model-reviewed, not human-reviewed (`TD-13`) |
+| **W2** · Retrieval upgrade | **9/9** | 🟡 | end-to-end p95 now measured (`W6-05`); budget not met — see below |
+| **W3** · Ingestion + chunking | 8/9 | ⬜ | `W3-09` still open |
+| **W4** · Serving Plane | **13/13** | ✅ | API, auth, SSE, citations, cache, guardrails, Docker |
+| **W5** · Full eval + observability | **11/11** | ✅ | generation eval, LLM judge + calibration, release gate, Langfuse, Prometheus, CI |
+| **W6** · Polish & presentation | 2/8 | ⬜ | load test + security pass done; web UI `[~]`; docs in progress |
 
-**1,436 tests** — 40 unit files (no Docker required) + 11 integration files
-(against real Qdrant/Redis). `ruff` and `mypy` clean across 139 files. 27
-engineering reports, one per task. `tests/e2e/` and `tests/security/` are empty
-scaffolding for `W5`/`W6`.
+**2,892 tests** — 2,351 unit · 382 integration (real Qdrant/Postgres/Redis) · 138
+security · 21 e2e (against the real compose stack and the real image). A default
+`pytest` run with the API container up: **2,870 passed, 22 skipped**. Without
+`make up-api` the e2e tier skips instead of failing, on purpose. `ruff` and
+`mypy` (including `--platform linux`) clean across 168 Python files. **60
+engineering reports**, one per task.
 
 ---
 
 ## Measured results
 
-On `golden_v1` — **242 questions** whose labels are anchored to character spans in
-**60 World Bank documents about Vietnam** (40 English + 20 Vietnamese, 14.3M
-characters, all CC BY 3.0 IGO). 209 questions are scored for ranking; 33
-`unanswerable` questions are measured separately by refusal correctness — they
-return `None` on every ranking metric rather than being counted as zero.
+The corpus is **60 World Bank documents about Vietnam** (40 English + 20
+Vietnamese, 14.3M characters, all CC BY 3.0 IGO). The golden set `golden_v1` has
+**242 questions** whose labels are anchored to character spans in those
+documents. 209 are scored for ranking; 33 `unanswerable` questions are measured
+separately by refusal correctness — they return `None` on every ranking metric
+rather than being counted as zero.
 
-| Metric | POC (baseline) | Current | `G6` target |
+### Retrieval
+
+Serving bundle [`rag-bundle-v0.2.1`](bundles/rag-bundle-v0.2.1/manifest.json):
+BGE-M3 → hybrid RRF (`k=1`) → cross-encoder rerank over 50 candidates, on
+contextual chunks. Same 209 questions, same labels as the baseline, so the two
+columns are directly comparable.
+
+| Metric | POC baseline | Current | `G6` target |
 |---|---:|---:|---:|
-| Recall@10 | 0.2257 | **0.7352** | ≥ 0.90 |
-| Recall@5 | 0.1746 | **0.7026** | — |
-| nDCG@10 | 0.1621 | **0.6481** | ≥ 0.82 |
-| MRR | 0.1660 | **0.6440** | ≥ 0.75 |
-| hit_rate@1 | 0.1196 | **0.5598** | — |
-| p95 retrieval latency | 32.8 ms | 604.0 ms | — |
+| Recall@10 | 0.2257 | **0.8022** | ≥ 0.90 |
+| Recall@5 | 0.1746 | **0.7847** | — |
+| nDCG@10 | 0.1621 | **0.7079** | ≥ 0.82 |
+| MRR | 0.1660 | **0.7047** | ≥ 0.75 |
+| hit_rate@1 | 0.1196 | **0.6220** | — |
+| MAP@20 | — | **0.6636** | — |
 
-Current configuration: **BGE-M3 + hybrid RRF (`k=1`) + cross-encoder reranking
-over a pool of 50**. Measured on the **same 209 questions with the same labels**,
-so it is directly comparable to the baseline.
+*Baseline recall: [`cmp-baseline-vs-bgem3.md`](plans/reports/compare/cmp-baseline-vs-bgem3.md)
+· baseline nDCG/MRR/hit@1:
+[`ablation-exp-001-ndcg.md`](plans/reports/compare/ablation-exp-001-ndcg.md) row
+`e1-baseline-dense` · current: the bundle manifest, produced by
+`make eval-retrieval` and checked by `make gate`.*
 
-**Three things that must be read alongside that table:**
+**What the reranker is worth**, from the 14-cell ablation in
+[`ablation-exp-001-ndcg.md`](plans/reports/compare/ablation-exp-001-ndcg.md):
 
-* **`cross_lingual` scores 0** at baseline because the old embedding model is
-  **monolingual**. The gap to `Recall@10 ≥ 0.90` is **not** closable by parameter
-  tuning.
+| configuration | nDCG@10 |
+|---|---:|
+| rerank over 50 candidates | **0.6481** |
+| rerank over 20 candidates | 0.5823 |
+| no rerank — hybrid RRF `k=1` | 0.4563 |
+
+(That table is on non-contextual chunks, which is why its top row is below the
+0.7079 above — it isolates one variable at a time.)
+
+### Generation
+
+Scored on the same answer run, by an LLM judge calibrated against hand labels —
+Cohen's κ vs human **0.7368** ([`judge-calibration.md`](plans/reports/tasks/judge-calibration.md)).
+
+| Metric | Value |
+|---|---:|
+| Faithfulness | **0.9877** |
+| Citation coverage | 0.6186 |
+| Answer relevancy | 0.7479 |
+
+### Serving
+
+From the load test in [`w6-05-loadtest.md`](plans/reports/tasks/w6-05-loadtest.md),
+run against the real stack with the provider call stubbed at the HTTP boundary
+and calibrated against 242 real requests:
+
+| | |
+|---|---:|
+| p95 end-to-end (real DeepSeek) | 4,842 ms |
+| Single-instance throughput ceiling | **1.33 req/s** |
+| Failed requests, all concurrency levels | **0** |
+
+**Three things that must be read alongside these tables:**
+
+* **The p95 budget of 3,500 ms is not reachable by optimising retrieval.**
+  Removing retrieval and reranking *entirely* — an impossible configuration —
+  still leaves 4,055 ms, because 84% of p95 is the provider generating tokens.
+* **The throughput ceiling is one debt, not a vague scaling limit.** It equals
+  91% of `1 / rerank_time`: as concurrency rises, `completion` stays flat at
+  4.9 s across six levels while `rerank` walks 975 → 19,364 ms. The system does
+  not fall over under load; it slows down.
 * **`c=50` is neither the best nor the fastest configuration** — it is the one
-  being reported. `c=100` scores higher, but `W2-08` measured that the gain is
-  **coverage**, not ranking quality (nDCG and MAP move in the **opposite**
-  direction). `c=20` keeps 91% of the gain at **233 ms** and is the recommended
-  operating point.
-* **604 ms is retrieval-only latency**, not end-to-end. It can only be compared
-  against the 3,500 ms threshold after `W4-13`.
+  being served. `c=100` scores higher, but `W2-08` measured that the gain is
+  *coverage*, not ranking quality (nDCG and MAP move in the **opposite**
+  direction). `c=20` is 4.21× cheaper and is a live proposal (`NEW-09`).
 
 ---
 
@@ -103,32 +156,58 @@ so it is directly comparable to the baseline.
 flowchart LR
     subgraph P["Pipeline Plane — offline"]
         direction TB
-        C[corpus + manifest<br/>license enforced] --> L[loaders<br/>7 formats]
-        L --> K[chunking<br/>5 strategies]
+        C["corpus + manifest<br/>license enforced"] --> L["loaders · 7 formats"]
+        L --> K["chunking · 5 strategies<br/>+ contextual"]
         K --> I[build_index<br/>incremental]
-        I --> Q[(Qdrant<br/>dense + sparse)]
-        Q --> E[eval + ablation<br/>bootstrap · McNemar]
-        E --> M[(MLflow)]
+        I --> Q[("Qdrant<br/>dense + sparse")]
+        Q --> E["eval + ablation<br/>bootstrap · McNemar"]
+        E --> J[LLM judge<br/>calibrated κ=0.74]
+        J --> G{{make gate<br/>vs champion}}
     end
+
+    G ==>|"mints"| B[["RagBundle v0.2.1<br/>immutable · checksummed"]]
+
     subgraph S["Serving Plane — online"]
         direction TB
-        A[query API<br/>W4] --> R[retrieve → rerank<br/>→ generate]
+        A["POST /chat · SSE"] --> U["query understanding<br/>rewrite · lang · route"]
+        U --> H["hybrid retrieve → rerank"]
+        H --> N["generate + verify citations"]
+        N --> A
+        A -.-> D[(Postgres<br/>RLS per tenant)]
+        A -.-> R[(Redis<br/>semantic cache)]
     end
-    Q -. "only via a versioned immutable artifact" .-> R
+
+    B ==>|"hot-reload · rollback"| H
+    Q -. "read-only, named by the bundle" .-> H
+    S --> O["Langfuse traces<br/>Prometheus · Grafana"]
 
     style P fill:#eef6ff,stroke:#4a7fb5
     style S fill:#f6f0ff,stroke:#8a6db5
+    style B fill:#fff4e0,stroke:#b58a4a
 ```
 
 | Directory | Role |
 |---|---|
-| `packages/rag_core/` | **Core library.** Never imports `pipeline`/`serving`. Heavy dependencies are imported lazily. `chunking/` `embedding/` `loaders/` `retrieval/` `reranking/` `llm/` |
+| `packages/rag_core/` | **Core library.** Never imports `pipeline`/`serving`. Heavy dependencies imported lazily. `chunking/` `embedding/` `loaders/` `retrieval/` `reranking/` `llm/` `generation/` `bundle/` |
 | `pipeline/` | Pipeline Plane: `corpus/` `indexing/` `goldenset/` `eval/` `experiments/` `ingest/` |
-| `serving/` | Serving Plane (`W4`, not built yet) |
+| `serving/` | Serving Plane: `api/` `core/` `db/` + `Dockerfile` |
+| `bundles/` | Versioned immutable artifacts + the `CURRENT` pointer |
 | `configs/` | Versioned configs for corpus / indexing / experiments |
+| `infra/` | compose stacks: platform · metrics · Langfuse |
 | `plans/` | `CHECKLIST.md` (source of truth), `WORKLOG.md`, `reports/` |
-| `tests/` | `unit/` (40 files) · `integration/` (11) · `e2e/`, `security/` still empty |
+| `tests/` | `unit/` (80 files) · `integration/` (21) · `security/` (5) · `e2e/` (2) |
 | `legacy/` | The Streamlit POC — the comparison baseline, still runnable |
+
+### The API
+
+`POST /chat` (SSE) · `GET /conversations/{id}` · `POST /feedback` ·
+`GET /health` · `GET /ready` · `GET /metrics` ·
+admin: `POST /admin/bundle/reload` · `POST /admin/bundle/rollback` ·
+`GET /admin/feedback` · `GET /admin/llm` · `GET /admin/tracing`.
+
+Every data endpoint requires an API key. `/ready` is not a liveness probe: it
+returns 503 unless the bundle loaded, Qdrant answers, **and** the database is at
+the migration revision this image expects.
 
 ---
 
@@ -136,22 +215,45 @@ flowchart LR
 
 ```bash
 uv sync --all-extras        # or: make install
-cp .env.example .env        # fill in API keys only if generating a golden set
 make up                     # Qdrant + Postgres + Redis, waits until healthy
-
-make data-pull              # corpus via DVC (or `make corpus` to re-fetch from source)
-make index BUNDLE=bgem3     # build the index
-make eval-retrieval BUNDLE=bgem3 MODE=hybrid RUN=my-run
+make smoke-eval             # ← the whole retrieval stack, on a frozen index
 ```
 
-**The evaluation path needs no LLM API at all.** It has been run for real with
-empty keys and produced results identical to the run with keys (0.0000%
+That third command is the one worth trying first. It takes about **5 seconds**,
+needs **no GPU, no API key and no corpus download**, and prints real retrieval
+metrics — the embedder is replaced by a frozen lookup table of pre-computed
+vectors, so the run is deterministic and costs **$0**, while every layer above it
+is the production code. It is also the gate that makes a PR fail if retrieval
+regresses.
+
+```
+smoke_mrr              0.8311
+smoke_ndcg@10          0.8476
+smoke_recall@10        0.9333
+smoke eval XANH (tolerance 0.020)
+```
+
+**There is no one-command path to the full system, and this README will not
+pretend otherwise:** the index is ~20k chunks embedded with BGE-M3, which needs a
+GPU and hours. What you can do without one is above; what needs the index is
+below.
+
+```bash
+make data-pull                 # corpus via DVC (or `make corpus` to re-fetch)
+make index BUNDLE=bgem3        # build the index — GPU strongly recommended
+make eval-retrieval BUNDLE=bgem3 MODE=hybrid RUN=my-run
+make up-api                    # build the image, start the API, wait for /ready
+make smoke                     # e2e against the running container
+```
+
+**The retrieval evaluation path needs no LLM API at all.** It has been run for
+real with empty keys and produced results identical to the run with keys (0.0000%
 deviation) — retrieval evaluation must not depend on a paid service.
 
 ```bash
 make help                   # every target, with descriptions
 make lint                   # ruff check + format + mypy
-make test                   # unit tests, no Docker needed
+make test                   # unit + security, no Docker needed
 make test-integration       # requires `make up`
 ```
 
@@ -163,7 +265,9 @@ make truncation                  # how much text the embedding model silently cu
 make token-probe                 # chunking by characters vs by tokens, on the real corpus
 make incr-probe                  # edit one line → how many chunks must be re-embedded
 make ablation                    # 14-cell table with per-row p-values and CIs
-make ingest-api & make ingest-worker   # ingestion API + background worker
+make gate BUNDLE=0.2.1           # release gate: candidate vs champion, exit≠0 on FAIL
+make up-metrics                  # Prometheus + Grafana "RAG Health" at :3001
+make up-langfuse                 # self-hosted Langfuse tracing
 ```
 
 ---
@@ -171,7 +275,7 @@ make ingest-api & make ingest-worker   # ingestion API + background worker
 ## How evaluation works
 
 This is the part that separates the repo from a demo, so it is the part worth
-reading closely.
+reading closely. The long version is [`EVALUATION.md`](EVALUATION.md).
 
 **Labels are anchored to character spans, not to `chunk_id`.** A `chunk_id` here
 is `{doc_id}::{index}` — purely positional. Change `chunk_size` and every
@@ -192,6 +296,12 @@ groups with **Bonferroni correction**. There are separate flags for
 group is permanently unmeasurable) and `INCONCLUSIVE` — both distinct from "tie",
 and collapsing them together is the fastest way to misread a result.
 
+**The judge is calibrated, and the calibration is a number.** An LLM judge returns
+**labels**, never scores, and is scored against 50 hand-labelled examples: Cohen's
+κ = **0.7368**, cross-checked against a second judge from a different family.
+Swapping the judge model alone moves a metric by 7.5 points — which is why the
+judge model, its temperature and its cache digest are all recorded in the bundle.
+
 **The integrity chain is pinned all the way to the parsed text.** The manifest
 pins not just the `sha256` of the bytes but also `text_sha256` and a parser
 fingerprint — including the version of **every** package that can change the
@@ -211,12 +321,16 @@ measuring, checked against the outcome.
 | `W2-08` | "Which configuration wins" is a **max-selection problem**, so the answer is a **set**, not a row. The winner was once decided by **6 resamples out of 10,000** | [`w2-08-ablation.md`](plans/reports/tasks/w2-08-ablation.md) |
 | `W2-09` | "Which category improved most" **has no answer** with the data available — all 6 groups tie, and still tie without the correction. It needs ~440 questions | [`exp-001-retrieval.md`](plans/reports/tasks/exp-001-retrieval.md) |
 | `W3-01` | Inserting a parser between bytes and text **destroys the golden set**: 0/280 spans survive, while `sha256` still matches and no test goes red | [`w3-01-docling-loader.md`](plans/reports/tasks/w3-01-docling-loader.md) |
-| `W3-02` | The bundled OCR engine reads English verbatim but **returns garbage for Vietnamese** — so the loader **refuses** rather than emitting garbage that looks like content | [`w3-02-ocr-fallback.md`](plans/reports/tasks/w3-02-ocr-fallback.md) |
 | `W3-06` | **Characters are not a portable unit**: for the same chunk set, switching tokenizer changes the token count by up to 47%, and the EN↔VI skew **reverses sign** | [`w3-06-token-sizing.md`](plans/reports/tasks/w3-06-token-sizing.md) |
-| `W3-05` | **Context expansion ratio is a misleading metric**: halving the child doubles it while the actual prompt stays the same (9,471 → 9,519 tokens) | [`w3-05-parent-child.md`](plans/reports/tasks/w3-05-parent-child.md) |
-| `TD-22` | The parser fingerprint pinned the **umbrella package name**: the function producing the text lives in `docling-core`, and the layout model weights are pulled from a **moving branch** | [`td-22-parse-pin.md`](plans/reports/tasks/td-22-parse-pin.md) |
-| `W3-07` | Incremental re-indexing is **179.3× faster**; and the blast radius of an edit is bounded by the **distance to the next paragraph break** (2.0% → 98.0% reuse) | [`w3-07-incremental-reindex.md`](plans/reports/tasks/w3-07-incremental-reindex.md) |
-| `W3-08` | arq's `max_tries` does **not** retry ordinary exceptions — and that default turns out to be right | [`w3-08-ingest-worker.md`](plans/reports/tasks/w3-08-ingest-worker.md) |
+| `W3-07` | Incremental re-indexing is **179.3× faster**; the blast radius of an edit is bounded by the **distance to the next paragraph break** (2.0% → 98.0% reuse) | [`w3-07-incremental-reindex.md`](plans/reports/tasks/w3-07-incremental-reindex.md) |
+| `W4-09` | **`sources` and `citations` answer different questions**: what was handed to the model, versus what the model claims it used *after the claim was checked against the text* | [`w4-09-citation-verify.md`](plans/reports/tasks/w4-09-citation-verify.md) |
+| `W4-10` | **No threshold separates a paraphrase from a near-identical question with a different answer.** The distributions overlap almost completely (p50 0.8717 vs 0.8659; the worst trap scores 0.9410 — "revenue" vs "expenditure", not one digit apart) | [`w4-10-semantic-cache.md`](plans/reports/tasks/w4-10-semantic-cache.md) |
+| `W4-12` | **`k=1` against a non-deterministic model is not a measurement.** The first run showed the old branch leaking 1/11; the same payload, same seed, same `temp=0` leaked nothing. At `k=6`: **8/11 (~73%)** vs **0/22** with the guardrail | [`security-w4.md`](plans/reports/tasks/security-w4.md) |
+| `W5-01` | The harness found **two production bugs before it printed a single number** — both made `POST /chat` return 503, and both passed all 13 `W4` items | [`w5-01-generation-eval.md`](plans/reports/tasks/w5-01-generation-eval.md) |
+| `W5-11` | **A cache namespace missing one field made an ablation compare a model with itself.** `cache_namespace` carried bundle + prompt + top_k but **not the generating model**, so the GLM arm replayed DeepSeek's answers verbatim while every number looked plausible | [`exp-003-generator.md`](plans/reports/tasks/exp-003-generator.md) |
+| `W6-05` | **A load test that calls a real provider is a load test of that provider.** 84% of p95 is provider token generation, so the stub replaces exactly that HTTP call and nothing else — calibrated to within 11%, in the direction known in advance | [`w6-05-loadtest.md`](plans/reports/tasks/w6-05-loadtest.md) |
+| `W6-06` | **The log redactor lied about itself**: its docstring cited "a `logger.exception` printing a provider payload" as the reason it is attached to the handler — and that is precisely the case it missed, because the traceback lives in `exc_info`, a *tuple* | [`security-final.md`](plans/reports/tasks/security-final.md) |
+| `W6-06` | **A table can never close; a shape can.** A debt asked for a complete Unicode confusables table. Measured: the fold table catches **2/62** single-character homoglyph substitutions; a structural *mixed-script* rule catches **62/62** with no new dependency | [`security-final.md`](plans/reports/tasks/security-final.md) |
 
 ---
 
@@ -258,4 +372,10 @@ boundaries and at parent boundaries.
 kept separate: folding them under a single "MIT" line grants others a right I do
 not hold.
 
+## Further reading
+
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — the two planes, the bundle boundary, and what each layer may not do
+- [`EVALUATION.md`](EVALUATION.md) — how the golden set was built and why its numbers can be trusted
+- [`BUNDLE.md`](BUNDLE.md) — what a `RagBundle` contains, how one is minted, promoted and rolled back
+- [`DOCKER-DISK.md`](DOCKER-DISK.md) — why Docker ate 60 GB, and how to get it back
 - [`RUNPOD.md`](RUNPOD.md) — running the contextual-retrieval job on a rented GPU, or on an API instead

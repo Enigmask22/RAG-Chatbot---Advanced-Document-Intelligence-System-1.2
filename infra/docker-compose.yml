@@ -113,7 +113,23 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-rag}
       - REDIS_URL=redis://redis:6379/0
       - BUNDLE_ROOT=/app/bundles
-      - BUNDLE_VERSION=${BUNDLE_VERSION:-0.2.0}
+      # ⚠️⚠️ KHÔNG đặt giá trị mặc định ở đây, và đó là một lỗi đã xảy ra thật.
+      #
+      # `_startup_version` có ba tầng: `BUNDLE_VERSION` ghim tay → `bundles/CURRENT`
+      # → đoán semver kèm cảnh báo. Dòng này từng là `${BUNDLE_VERSION:-0.2.0}`,
+      # nghĩa là tầng 1 **luôn luôn** nổ với một hằng số, nên tầng 2 — đúng con
+      # đường mà `W5-10` dựng cho production, cái mà promote và rollback ghi vào —
+      # là **mã chết** trong chính môi trường giống production nhất của repo.
+      #
+      # Đo được 07/09/2026: `CURRENT` là `0.2.1`, container phục vụ `0.2.0`, và
+      # `/ready` báo `ready: true` suốt. Mọi tài liệu, mọi lượt eval và `make gate`
+      # nói về một bundle khác với bundle đang trả lời người dùng. Đây là họ
+      # `AU-12`: hai nguồn sự thật cho cùng một câu hỏi, và bản sao thứ hai mục đi
+      # trong im lặng.
+      #
+      # Dạng trần (không `=`) chỉ truyền biến khi nó ĐƯỢC ĐẶT: ghim thì khai trong
+      # `.env`, không khai thì `CURRENT` thắng.
+      - BUNDLE_VERSION
       - API_KEYS_FILE=/run/secrets/api-keys.json
       - EMBEDDING_DEVICE=${EMBEDDING_DEVICE:-auto}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
