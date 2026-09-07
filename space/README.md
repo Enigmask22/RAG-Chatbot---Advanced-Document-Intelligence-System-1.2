@@ -9,7 +9,7 @@ python_version: "3.12.12"
 app_file: app.py
 pinned: false
 license: mit
-short_description: RAG hỏi đáp trên 60 báo cáo World Bank, trích dẫn máy chủ tự xác minh
+short_description: RAG hỏi đáp 60 báo cáo World Bank, trích dẫn đã xác minh
 ---
 
 # RAG platform — demo công khai

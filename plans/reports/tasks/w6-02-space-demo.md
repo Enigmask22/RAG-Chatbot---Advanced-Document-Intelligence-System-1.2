@@ -350,7 +350,72 @@ thuộc vào việc đã chạy app hay chưa.
 
 ---
 
-## 11. Việc sinh ra từ lượt này
+## 11. ⭐⭐ Lượt deploy thật đỏ — và bốn cửa của tôi hỏi sai câu
+
+*bổ sung 07/09/2026, sau lượt chạy `deploy_space.py --private` đầu tiên*
+
+Script dừng ở `upload_folder` với một `BadRequestError` lồng **ba tầng
+traceback** từ `POST /api/validate-yaml`:
+
+```
+Bad request:
+"short_description" length must be less than or equal to 60 characters long
+```
+
+`short_description` trong `space/README.md` dài **69** ký tự. Đã rút xuống 56.
+
+### Vì sao bốn cửa cho qua
+
+Đọc lại chúng cạnh nhau thì thấy chúng hỏi **cùng một câu**:
+
+| cửa | câu nó hỏi |
+|---|---|
+| 1 cây sạch | thứ tôi gửi có đúng commit này không |
+| 2 SHA đã đẩy | commit này có tồn tại ở nơi Space sẽ tải về không |
+| 3 point khớp manifest | index này có đúng index đã đo không |
+| 4 manifest khớp `CURRENT` | bundle này có đúng bundle đang phục vụ không |
+
+Cả bốn hỏi ***"thứ tôi gửi có đúng thứ tôi đã đo không"***. **Không cửa nào
+hỏi *"phía kia có nhận không"*.** Đó là một khoảng trống có hình dạng rõ ràng,
+không phải một trường hợp bị bỏ sót: tôi thiết kế bộ cửa quanh nỗi lo *lệch
+giữa hai bản sao* (`AU-12`), và ràng buộc của Hub không thuộc loại ấy.
+
+⭐ Ràng buộc thì thuộc về Hub, nhưng **thời điểm biết được nó** thì thuộc về ta.
+
+### Cửa 5, và vì sao nó không gọi API
+
+`_gate_frontmatter()` kiểm độ dài **cục bộ**, không gọi `HfApi._validate_yaml`.
+Gọi API thì đúng hơn về nguyên tắc — nó biết mọi luật, kể cả luật Hub thêm ngày
+mai — nhưng nó biến một phép kiểm hai mili giây thành một phụ thuộc **mạng +
+token**, tức cửa sẽ hỏng ở những lượt mà bốn cửa kia vẫn chạy được. Ràng buộc
+duy nhất từng chặn ta là độ dài, nên đó là thứ được ghim; nếu Hub thêm luật mới
+thì cửa này im lặng và ta lại biết qua một lượt đỏ. Đánh đổi ấy **được nói ra
+trong docstring** chứ không giấu.
+
+### Hai bài test, và bài thứ hai mới là bài thật
+
+`test_short_description_khong_dai_hon_muc_Hub_nhan` đọc ngưỡng từ
+`deploy_space.SHORT_DESCRIPTION_MAX` chứ không gõ lại — một con số chép sang
+nơi thứ hai là `AU-12` ở quy mô nhỏ.
+
+Nhưng bài ấy một mình **không phân biệt được** "mô tả ngắn" với "cửa không chạy":
+nó xanh trong cả hai trường hợp. Nên có nhóm chứng
+`test_cua_5_bat_duoc_mo_ta_qua_dai` — dựng một `space/` giả với mô tả 61 ký tự
+và đòi `_gate_frontmatter` `SystemExit`. Cùng khuôn với bài học `W6-01`/`W5-08`:
+một phép kiểm khẳng định *"không có gì hỏng"* phải chứng minh được nó **biết**
+hỏng trông thế nào.
+
+### 💡 Một quan sát phụ, chưa thành nợ
+
+`scripts/` **không** nằm trong `files` của mypy (`uv run mypy` xanh 266 file;
+gọi thẳng `mypy scripts/deploy_space.py` ra ngay một `type-arg`). Đây là script
+duy nhất trong repo đẩy thứ gì đó ra **mặt công khai**, nên nó nằm ngoài lưới
+kiểu là điều đáng biết. Chưa mở nợ vì chưa đo được nó đã gây ra lỗi nào —
+nhưng ghi lại để lần sau không phải phát hiện lại.
+
+---
+
+## 12. Việc sinh ra từ lượt này
 
 * `TD-87` — Space chạy Python/torch khác môi trường eval, và `retriever_name`
   không mã hoá điều đó.

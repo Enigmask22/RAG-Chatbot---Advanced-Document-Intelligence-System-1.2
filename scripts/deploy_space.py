@@ -2,10 +2,10 @@
 
 Space là một repo thứ hai, và mọi repo thứ hai là một chỗ để hai bản sao lệch
 nhau. Script này tồn tại để **không có bước nào làm bằng tay**: nó lắp thư mục
-gửi đi từ nguồn trong repo này, điền SHA, và từ chối chạy khi một trong bốn điều
+gửi đi từ nguồn trong repo này, điền SHA, và từ chối chạy khi một trong năm điều
 kiện dưới đây sai.
 
-## Bốn cửa, và cả bốn đều là lỗi đã tưởng tượng được ra hậu quả
+## Năm cửa, và bốn cửa đầu là lỗi đã tưởng tượng được ra hậu quả
 
 1. **Cây làm việc sạch.** SHA ghim trong `requirements.txt` trỏ về một commit;
    nếu còn thay đổi chưa commit thì SHA ấy mô tả một hệ thống khác hệ thống vừa
@@ -19,12 +19,19 @@ kiện dưới đây sai.
    một lần upload 239 MB.
 4. **Manifest gửi đi đúng bản `bundles/CURRENT` trỏ tới.** Gửi một bundle khác
    con trỏ là dựng lại đúng lỗi `NEW-13` ở một repo thứ hai.
+5. **⚠️ Frontmatter hợp lệ với Hub.** Cửa này được thêm **sau khi bốn cửa kia
+   cho qua một lượt deploy hỏng**: `short_description` dài 69 ký tự, Hub chặn ở
+   60, và lỗi trả về là một `BadRequestError` lồng ba tầng traceback từ
+   `/api/validate-yaml`. Bốn cửa đầu đều hỏi *"thứ tôi gửi có đúng thứ tôi đã
+   đo không"* — không cửa nào hỏi *"phía kia có nhận không"*. Ràng buộc thì
+   thuộc về Hub, nhưng **thời điểm** biết được nó thì thuộc về ta.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -39,6 +46,10 @@ SHA_PLACEHOLDER = "__GIT_SHA__"
 #: Chỉ những file này rời khỏi `space/` — danh sách trắng, không phải danh sách
 #: đen. Một `ignore_patterns` bỏ sót nghĩa là một file lọt lên chỗ công khai.
 APP_FILES = ("app.py", "guard.py", "zerogpu.py", "README.md", "requirements.txt")
+
+#: Hub từ chối `short_description` dài hơn ngần này (đo được 07/09/2026 bằng
+#: một lượt deploy đỏ). Ghim ở đây, không gõ lại trong test.
+SHORT_DESCRIPTION_MAX = 60
 
 
 def _git(*args: str) -> str:
@@ -80,6 +91,26 @@ def _gate_index(index_dir: Path, manifest: dict) -> int:
     if got != want:
         raise SystemExit(f"index có {got} point nhưng manifest khai {want} — cửa 3")
     return got
+
+
+def _gate_frontmatter() -> None:
+    """Cửa 5 — xem docstring module.
+
+    Cố ý **không** gọi `HfApi._validate_yaml`: nó cần mạng và một token, tức
+    biến một phép kiểm hai mili giây thành một phụ thuộc. Ràng buộc duy nhất
+    từng chặn ta là độ dài, nên đó là thứ được ghim; nếu Hub thêm luật mới thì
+    cửa này im lặng và ta lại biết qua một lượt đỏ — chấp nhận, và nói ra.
+    """
+    text = (SPACE_SRC / "README.md").read_text(encoding="utf-8")
+    match = re.search(r"^short_description:[ 	]*(.+?)[ 	]*$", text, re.MULTILINE)
+    if match is None:
+        return
+    mo_ta = match.group(1)
+    if len(mo_ta) > SHORT_DESCRIPTION_MAX:
+        raise SystemExit(
+            f"short_description dài {len(mo_ta)} ký tự, Hub chặn ở "
+            f"{SHORT_DESCRIPTION_MAX} — cửa 5\n  {mo_ta}"
+        )
 
 
 def _stage(dest: Path, sha: str, index_dir: Path, version: str) -> None:
@@ -136,6 +167,7 @@ def main() -> int:
     sha = _git("rev-parse", "HEAD")
     if not args.dry_run:
         _gate_pushed(sha)
+    _gate_frontmatter()
     points = _gate_index(args.index, manifest)
 
     print(f"bundle {version} · {points} point · commit {sha[:10]} · {GITHUB}")

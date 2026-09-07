@@ -94,6 +94,40 @@ class TestFrontmatterKhaiThuZeroGpuChayDuoc:
     def test_app_file_tro_dung_file_co_that(self) -> None:
         assert (SPACE / _frontmatter()["app_file"]).is_file()
 
+    def test_short_description_khong_dai_hon_muc_Hub_nhan(self) -> None:
+        """⭐⭐ Bài này tồn tại vì một lượt deploy **thật sự đỏ** ở đúng chỗ này.
+
+        Bản đầu dài **69** ký tự; Hub chặn ở 60 và trả về một `BadRequestError`
+        lồng ba tầng traceback từ `/api/validate-yaml`. Bốn cửa của
+        `deploy_space.py` đều hỏi *"thứ tôi gửi có đúng thứ tôi đã đo không"* —
+        **không cửa nào hỏi "phía kia có nhận không"**, nên cả bốn cho qua.
+
+        Ngưỡng đọc từ `deploy_space.SHORT_DESCRIPTION_MAX` chứ không gõ lại:
+        một con số chép sang nơi thứ hai là `AU-12` ở quy mô nhỏ.
+        """
+        gioi_han = _deploy_module().SHORT_DESCRIPTION_MAX
+        mo_ta = _frontmatter().get("short_description", "")
+        assert mo_ta, "Space không có short_description thì thẻ trên Hub trống"
+        assert len(mo_ta) <= gioi_han, f"{len(mo_ta)} ký tự > {gioi_han}: {mo_ta}"
+
+    def test_cua_5_bat_duoc_mo_ta_qua_dai(self, tmp_path: Path) -> None:
+        """Nhóm chứng: bài trên xanh vì mô tả ngắn, hay vì cửa không chạy?
+
+        Gọi thẳng `_gate_frontmatter` trên một `space/` giả có mô tả 61 ký tự
+        và đòi nó `SystemExit`. Không có bài này thì một `_gate_frontmatter`
+        rỗng cũng cho toàn bộ lớp xanh.
+        """
+        module = _deploy_module()
+        gia = tmp_path / "space"
+        gia.mkdir()
+        qua_dai = "x" * (module.SHORT_DESCRIPTION_MAX + 1)
+        (gia / "README.md").write_text(
+            f"---\ntitle: t\nshort_description: {qua_dai}\n---\n", encoding="utf-8"
+        )
+        module.SPACE_SRC = gia
+        with pytest.raises(SystemExit, match="cửa 5"):
+            module._gate_frontmatter()
+
 
 class TestNghiaVuGhiCongCuaGiayPhepCorpus:
     def test_readme_neu_dung_giay_phep_va_chu_so_huu(self) -> None:
