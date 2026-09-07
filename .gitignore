@@ -77,3 +77,11 @@ data/contexts/*
 !data/contexts/contexts-single-probe.jsonl.gz
 !data/contexts/contexts-single-probe.jsonl.sha256
 dist/
+
+# `W6-02`. Trên HF Space, `app.py` đọc index và bundle từ hai thư mục này cạnh
+# nó — đó là mặc định đúng *ở đó*. Trên máy dev, chạy `space/app.py` mà quên
+# `SPACE_INDEX_DIR` sẽ **tạo** một kho local mode rỗng ở đây (chuyện đã xảy ra),
+# và bản đầy đủ là **239 MB**. `scripts/deploy_space.py` lắp chúng vào một thư
+# mục tạm, nên chúng không có lý do gì nằm trong git.
+space/index/
+space/bundles/
