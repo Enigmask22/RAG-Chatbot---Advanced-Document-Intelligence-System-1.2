@@ -5158,3 +5158,34 @@ cứng, §8 của `security-final.md` là danh sách phải làm trước khi b�
 Vẫn chờ bạn: **SLO TTFT** (⏳ trong `G2`) · **`NEW-11`** (quyết định về upload) ·
 **`TD-13`** (điều kiện duy nhất còn thiếu của `G1` — và `EVALUATION.md` §0 giờ nói
 thẳng ra điều đó ở ngay dòng đầu, nên nó càng đáng đóng).
+
+### ⚠️ Một lượt CI đỏ không đọc được, và bản vá nó đẻ ra
+
+Sau bản vá bảng đếm, tầng integration đỏ **một lần** trên `b123d6d` — một commit
+**chỉ đụng `plans/WORKLOG.md`**. Cùng mã ấy xanh ở `7987ee4` (ngay trước) và
+`9844321` (ngay sau), và chạy đúng lệnh CI tại chỗ cho **285 xanh**. Chập chờn,
+không phải hồi quy → `NEW-14`.
+
+⭐⭐ **Nhưng không xác định được bài nào**, và đó mới là vấn đề đáng sửa: repo
+không có `gh` CLI và không có token, nên API **log** của Actions trả 403 — tất cả
+những gì đọc được về một lượt đỏ là chữ *"Process completed with exit code 1"*.
+Đã phải **đoán hai lần trong một phiên**.
+
+⭐ Thứ **đọc được không cần token** là annotation của check run
+(`/check-runs/{id}/annotations` trả 200 cho khách), và `::error::` đi thẳng vào
+đó. Hai tầng pytest giờ dẫn output qua `tee pytest.log`, khi đỏ thì trích phần
+`short test summary info` và phát từng dòng `FAILED`/`ERROR` thành annotation.
+
+⚠️⚠️ **`set -o pipefail` ở đây là bắt buộc, không phải cẩn thận thừa.** Dẫn pytest
+qua `tee` mà thiếu nó thì exit code của pipeline là của `tee` — **luôn là 0** —
+nên mọi lượt pytest đỏ sẽ báo xanh. Một bản vá nhằm làm CI *dễ đọc hơn* sẽ biến
+thành bản vá làm CI **ngừng gác**. Có test riêng cho đúng dòng ấy; phép tiêm bỏ
+nó đi thì đỏ.
+
+⭐ Và **không vá mù bài chập chờn**: một bài test bị sửa theo phỏng đoán là một
+bài test không còn đo cái nó tưởng. `NEW-14` ghi rõ việc phải làm là *đọc
+annotation ở lần đỏ sau*, kèm nghi phạm đáng soi trước (thứ tự phụ thuộc đồng hồ
+ở phân trang `(created_at, id)` — trên runner nhanh, hai hàng chèn trong cùng một
+tick là chuyện có thật).
+
+CI xanh cả 4 job trên `9844321`.
