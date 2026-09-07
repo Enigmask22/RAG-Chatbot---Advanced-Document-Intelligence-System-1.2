@@ -630,7 +630,16 @@ Sau khi hoàn thành, project này **một mình** phủ gần trọn một JD M
 \end{highlights}
 ```
 
-> Mọi chỗ `X/Y/Z/N/M/K` sẽ được điền bằng **số thật** từ `pipeline/reports/`, có script tái lập.
+> ~~Mọi chỗ `X/Y/Z/N/M/K` sẽ được điền bằng **số thật** từ `pipeline/reports/`, có script tái lập.~~
+>
+> ⚠️ **Bản nháp trên đã hết hiệu lực (07/09/2026, `W6-07`+`W6-08`).** Điền số
+> thật vào nó là không đủ: **năm dòng của nó mô tả một hệ thống khác hệ thống đã
+> xây** — "signed" (thật ra là checksum sha256), ablation "Qwen3-8B qua vLLM"
+> (thật ra là DeepSeek vs GLM, hai API hosted), "OpenRouter" (không có khoá,
+> chưa từng phục vụ request nào), "RAGAS" (cố ý **không** dùng — xem
+> `pipeline/eval/generation_metrics.py` §1), và "250-query" (thật ra 242).
+> Bản CV cuối, kèm bảng lệnh tái lập cho từng con số:
+> **[`reports/tasks/w6-07-08-cv.md`](reports/tasks/w6-07-08-cv.md)**.
 
 ---
 
