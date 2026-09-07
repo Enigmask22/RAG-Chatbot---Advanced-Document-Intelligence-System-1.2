@@ -227,6 +227,44 @@ class TestCuaChanTruocKhiDay:
         assert module._gate_index(index, manifest) == 1
 
 
+class TestPhanQuyetLintKhongDuocPhuThuocVaoViecDaCHAYAppChuaChua:
+    """⭐⭐ Một lượt CI đỏ thật, và nguyên nhân là loại khó tin nhất.
+
+    Gradio **tự sinh 62 file `.pyi` vào site-packages lúc class component được
+    tạo** (`component_meta.create_or_modify_pyi`). Nên `Textbox.submit` chỉ
+    *tồn tại* dưới mắt mypy sau khi ai đó đã chạy chương trình:
+
+    * máy dev đã `make space-run` ⇒ `make lint` **xanh**;
+    * runner CI chưa bao giờ chạy app ⇒ `"Textbox" has no attribute "submit"`.
+
+    Đo được bằng cách chuyển tạm 62 file ấy ra ngoài: mypy cho **đúng** một dòng
+    lỗi của CI. Bản vá là khai `gradio` thành `Any` (`follow_imports = "skip"`),
+    tức không lấy một bề mặt kiểu **sinh lúc chạy** làm đầu vào của phép kiểm
+    tĩnh. Bài test này canh đúng dòng đó, vì bỏ nó đi làm CI đỏ **chỉ với người
+    chưa chạy app** — kiểu hỏng mà người gây ra nó không nhìn thấy.
+    """
+
+    def test_gradio_duoc_khai_la_khong_theo_import(self) -> None:
+        import tomllib
+
+        config = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+        overrides = config["tool"]["mypy"]["overrides"]
+        for entry in overrides:
+            if "gradio.*" in entry.get("module", []):
+                assert entry.get("follow_imports") == "skip", entry
+                return
+        raise AssertionError(
+            "thiếu override `gradio.*` với follow_imports=skip — xem docstring lớp này"
+        )
+
+    def test_space_van_nam_trong_danh_sach_mypy_kiem(self) -> None:
+        """Nhóm chứng: bản vá trên không được dùng để **thôi kiểm** `space/`."""
+        import tomllib
+
+        config = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+        assert "space" in config["tool"]["mypy"]["files"]
+
+
 class TestBundleGuiDiKhopConTro:
     def test_manifest_cua_bundle_CURRENT_khai_dung_phien_ban_do(self) -> None:
         """Cửa 4 — `NEW-13` là bài học về hai nguồn sự thật cho một con số."""

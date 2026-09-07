@@ -218,6 +218,35 @@ module = [
 ]
 ignore_missing_imports = true
 
+# ⭐⭐ `gradio` bị xử như KHÔNG có kiểu, có chủ đích — và lý do là một lỗi CI thật.
+#
+# Gradio **tự sinh file `.pyi` vào site-packages lúc class component được tạo**
+# (`component_meta.create_or_modify_pyi`, 62 file). Nên bề mặt kiểu của nó chỉ
+# tồn tại **sau khi ai đó đã chạy chương trình**:
+#
+#   * máy dev đã `make space-run` ⇒ `textbox.pyi` có ⇒ `Textbox.submit` thấy được
+#     ⇒ `make lint` **xanh**;
+#   * runner CI chưa bao giờ chạy app ⇒ không có `.pyi` ⇒ `space/app.py:356:
+#     error: "Textbox" has no attribute "submit"` ⇒ **đỏ**.
+#
+# Đo được, không suy: chuyển tạm 62 file `.pyi` ra ngoài rồi chạy `mypy
+# --no-incremental` cho **đúng** một dòng lỗi của CI.
+#
+# Chú thích ở `ci.yml` đã ghi "phán quyết của `make lint` không phải một tính
+# chất của mã, nó là tính chất của mã **cộng một môi trường**". Đây là yếu tố
+# thứ ba: mã + môi trường + **lịch sử thao tác** trong môi trường đó. Và nó hỏng
+# theo chiều nguy hiểm — xanh cho người vừa chạy app, đỏ cho mọi người khác.
+#
+# Nên bề mặt kiểu sinh-lúc-chạy **không** được làm đầu vào của một phép kiểm
+# tĩnh. `follow_imports = "skip"` khiến `gradio` thành `Any` ở cả hai chỗ, tức
+# phán quyết quay về là tính chất của mã mình. Giá phải trả: gõ sai tên tham số
+# Gradio không bị bắt bởi mypy — nhưng nó chưa từng bị bắt một cách đáng tin,
+# vì "có bị bắt hay không" phụ thuộc vào việc đã chạy app.
+[[tool.mypy.overrides]]
+module = ["gradio.*"]
+follow_imports = "skip"
+ignore_missing_imports = true
+
 # `@spaces.GPU` không có stub, nên strict mode gọi mọi hàm nó bọc là "untyped".
 # Nới đúng hai luật ấy cho đúng một module — chỗ duy nhất chạm tới decorator —
 # thay vì tắt strict cho cả `space/`.
