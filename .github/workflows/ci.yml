@@ -115,7 +115,23 @@ jobs:
       - name: Cài phụ thuộc
         run: uv sync --extra dev --extra serving --extra llm --extra pipeline --extra qdrant
       - name: pytest
-        run: uv run pytest -m "not integration and not gpu and not e2e and not weights"
+        run: |
+          set -o pipefail
+          uv run pytest -m "not integration and not gpu and not e2e and not weights"             -rf --tb=short 2>&1 | tee pytest.log
+      # ⭐⭐ Biến "Process completed with exit code 1" thành TÊN BÀI ĐỎ.
+      #
+      # Repo này không có `gh` CLI và không có token, nên API **log** của Actions
+      # trả 403 — một lượt CI đỏ chỉ đọc được đúng chữ "exit code 1". Đã phải đoán
+      # hai lần trong một phiên, và lần thứ hai là một bài chập chờn ở tầng
+      # integration mà cùng mã ấy vừa xanh ở commit trước.
+      #
+      # ⭐ `::error::` đi vào **annotation của check run**, và endpoint
+      # `/check-runs/{id}/annotations` đọc được KHÔNG CẦN token. Nên bốn dòng dưới
+      # đây là thứ duy nhất biến một lượt đỏ thành một lượt chẩn đoán được.
+      - name: Nêu tên bài đỏ ra annotation
+        if: failure()
+        run: |
+          sed -n '/short test summary info/,$p' pytest.log             | grep -E '^(FAILED|ERROR)'             | while IFS= read -r line; do echo "::error::$line"; done
 
   # ---------------------------------------------------------------- tầng 3
   integration:
@@ -186,7 +202,23 @@ jobs:
         # Loại TẤT CẢ marker mà CI không chạy được, kể cả tổ hợp chưa tồn tại
         # hôm nay: một biểu thức "trừ đúng cái đang có" là một biểu thức phải
         # sửa lại vào đúng ngày ai đó thêm marker thứ hai lên một bài.
-        run: uv run pytest -m "integration and not weights and not gpu and not e2e"
+        run: |
+          set -o pipefail
+          uv run pytest -m "integration and not weights and not gpu and not e2e"             -rf --tb=short 2>&1 | tee pytest.log
+      # ⭐⭐ Biến "Process completed with exit code 1" thành TÊN BÀI ĐỎ.
+      #
+      # Repo này không có `gh` CLI và không có token, nên API **log** của Actions
+      # trả 403 — một lượt CI đỏ chỉ đọc được đúng chữ "exit code 1". Đã phải đoán
+      # hai lần trong một phiên, và lần thứ hai là một bài chập chờn ở tầng
+      # integration mà cùng mã ấy vừa xanh ở commit trước.
+      #
+      # ⭐ `::error::` đi vào **annotation của check run**, và endpoint
+      # `/check-runs/{id}/annotations` đọc được KHÔNG CẦN token. Nên bốn dòng dưới
+      # đây là thứ duy nhất biến một lượt đỏ thành một lượt chẩn đoán được.
+      - name: Nêu tên bài đỏ ra annotation
+        if: failure()
+        run: |
+          sed -n '/short test summary info/,$p' pytest.log             | grep -E '^(FAILED|ERROR)'             | while IFS= read -r line; do echo "::error::$line"; done
 
   # ---------------------------------------------------------------- tầng 4
   smoke-eval:

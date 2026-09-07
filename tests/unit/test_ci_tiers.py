@@ -203,3 +203,51 @@ class TestTheHoleIsDeclared:
         `python -m pipeline.eval.smoke` và trả exit code của riêng nó. Nếu một
         ngày nó thành `pytest -m smoke` thì bài phủ ở trên phải tính cả nó."""
         assert "smoke-eval" not in tiers
+
+
+class TestAFailedTierIsDiagnosable:
+    """⭐⭐ Một lượt CI đỏ mà không đọc được tên bài đỏ thì chỉ là một lời đồn.
+
+    Repo này không có `gh` CLI và không có token, nên API **log** của Actions trả
+    403: một lượt đỏ đọc được đúng chữ *"Process completed with exit code 1"*. Đã
+    phải đoán **hai lần trong một phiên** 07/09/2026, và lần thứ hai là một bài
+    chập chờn ở tầng integration mà cùng mã ấy vừa xanh ở commit ngay trước.
+
+    ⭐ Thứ đọc được **không cần token** là annotation của check run
+    (`/check-runs/{id}/annotations`), và `::error::` đi thẳng vào đó. Nên mỗi tầng
+    pytest phải ghi log ra tệp rồi phát tên bài đỏ thành annotation.
+
+    ⚠️ Phép kiểm ở đây là **quan hệ**: mọi job chạy `pytest` phải có bước ấy. Ghim
+    tên job thì bài test này sẽ đúng cho tới đúng ngày ai đó thêm tầng thứ ba.
+    """
+
+    @staticmethod
+    def _jobs_running_pytest() -> dict[str, list[dict[str, object]]]:
+        workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+        found = {}
+        for name, job in workflow["jobs"].items():
+            steps = job.get("steps", [])
+            if any("pytest -m" in str(step.get("run", "")) for step in steps):
+                found[name] = steps
+        return found
+
+    def test_every_pytest_job_writes_its_output_to_a_file(self) -> None:
+        for name, steps in self._jobs_running_pytest().items():
+            runs = " ".join(str(step.get("run", "")) for step in steps)
+            assert "pytest.log" in runs, (
+                f"job `{name}` chạy pytest nhưng không ghi log ra tệp — "
+                "không có gì để trích tên bài đỏ ra annotation"
+            )
+            assert "set -o pipefail" in runs, (
+                f"job `{name}` dẫn pytest qua `tee` mà không có `pipefail`: "
+                "exit code của `tee` (luôn 0) sẽ che mất pytest đỏ"
+            )
+
+    def test_every_pytest_job_emits_failures_as_annotations(self) -> None:
+        for name, steps in self._jobs_running_pytest().items():
+            emitters = [step for step in steps if "::error::" in str(step.get("run", ""))]
+            assert emitters, f"job `{name}` không phát `::error::` nào khi đỏ"
+            assert all("failure()" in str(step.get("if", "")) for step in emitters), (
+                f"bước annotation của job `{name}` phải chạy `if: failure()`; "
+                "chạy luôn thì mỗi lượt xanh cũng đẻ ra annotation rỗng"
+            )
