@@ -189,11 +189,19 @@ known-first-party = ["rag_core", "pipeline", "serving", "guard", "zerogpu"]
 # --------------------------------------------------------------------------
 [tool.mypy]
 python_version = "3.12"
-mypy_path = "packages:space"
-# `space` nằm trong danh sách này có chủ ý: mã chạy trên demo công khai chịu
-# đúng mức kiểm như mã production. Nó **không** phải một package (`app.py` nạp
-# `guard`/`zerogpu` theo tên trần vì đó là cách HF Spaces chạy), nên đường nạp
-# đi qua `mypy_path` chứ không qua import tuyệt đối.
+mypy_path = "packages"
+# ⚠️⚠️ **KHÔNG** thêm `space` vào `mypy_path`, và đó là một lỗi đã xảy ra thật
+# (lượt CI `7d14449`). Hai lý do, và cái đầu là cái làm nó khó thấy:
+#
+# 1. `mypy_path` tách bằng `os.pathsep` — `;` trên Windows, `:` trên Linux. Nên
+#    `"packages:space"` là **một** đường dẫn vô nghĩa (bị bỏ qua im lặng) trên
+#    máy dev và **hai** đường dẫn trên runner CI. Một dòng cấu hình có nghĩa
+#    khác nhau ở hai chỗ là một dòng mà `make lint` xanh không nói gì về CI.
+# 2. Nó không cần: mypy tự thêm thư mục của mỗi file được kiểm vào đường tìm,
+#    nên `space/app.py` nạp `guard`/`zerogpu` được mà không cần khai gì.
+#
+# `space` vẫn nằm trong `files` — mã chạy trên demo công khai chịu đúng mức
+# kiểm như mã production.
 files = ["packages", "pipeline", "serving", "tests", "space"]
 exclude = ["^legacy/"]
 strict = true

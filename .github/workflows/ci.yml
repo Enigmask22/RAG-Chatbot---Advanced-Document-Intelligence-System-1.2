@@ -96,7 +96,17 @@ jobs:
 
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy
+      # ⚠️ Ghi ra file vì cùng lý do với `pytest.log`: API log của Actions trả
+      # 403 cho repo này, nên một `mypy` đỏ không đọc được nếu đầu ra chỉ nằm
+      # trong log. Đã phải đoán một lần (`7d14449`).
+      - name: mypy
+        run: |
+          set -o pipefail
+          uv run mypy 2>&1 | tee mypy.log
+      - name: Nêu lỗi mypy ra annotation
+        if: failure()
+        run: |
+          grep -E '(error|note):' mypy.log             | head -n 40             | while IFS= read -r line; do echo "::error::$line"; done
 
   # ---------------------------------------------------------------- tầng 2
   unit:
@@ -113,7 +123,14 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Cài phụ thuộc
-        run: uv sync --extra dev --extra serving --extra llm --extra pipeline --extra qdrant
+        # ⚠️ `--extra space` là bắt buộc dù `space/` không phải mã production:
+        # `pytest` **import mọi module test khi collect**, kể cả module bị `-m`
+        # loại ra sau đó. Bộ test của `W6-02` nạp `guard`/`zerogpu`, và
+        # `zerogpu` `import spaces` ⇒ thiếu extra này thì cả tầng chết ở bước
+        # collect với **exit code 2**, không phải một bài đỏ. Đã xảy ra thật
+        # (lượt `7d14449`), và bộ phát annotation lúc ấy không đọc được gì.
+        run: uv sync --extra dev --extra serving --extra llm --extra pipeline
+          --extra qdrant --extra space
       - name: pytest
         run: |
           set -o pipefail
@@ -131,7 +148,18 @@ jobs:
       - name: Nêu tên bài đỏ ra annotation
         if: failure()
         run: |
-          sed -n '/short test summary info/,$p' pytest.log             | grep -E '^(FAILED|ERROR)'             | while IFS= read -r line; do echo "::error::$line"; done
+          named=$(sed -n '/short test summary info/,$p' pytest.log             | grep -E '^(FAILED|ERROR)' || true)
+          if [ -n "$named" ]; then
+            echo "$named" | while IFS= read -r line; do echo "::error::$line"; done
+          else
+            # ⭐⭐ Không có mục "short test summary info" là một CHẨN ĐOÁN, không
+            # phải một chỗ trống: pytest chết **trước khi chạy bài nào** (exit 2 =
+            # lỗi collect / lỗi tham số). Bản đầu của bước này chỉ đọc mục summary,
+            # nên đúng ca ấy nó phát ra **rỗng** và một lượt đỏ lại về đúng chữ
+            # "exit code 2" như trước khi có bản vá. Xảy ra thật ở `7d14449`.
+            echo "::error::pytest không tới được mục summary (thường là lỗi collect) — 25 dòng cuối:"
+            tail -n 25 pytest.log | while IFS= read -r line; do echo "::error::$line"; done
+          fi
 
   # ---------------------------------------------------------------- tầng 3
   integration:
@@ -185,7 +213,14 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Cài phụ thuộc
-        run: uv sync --extra dev --extra serving --extra llm --extra pipeline --extra qdrant
+        # ⚠️ `--extra space` là bắt buộc dù `space/` không phải mã production:
+        # `pytest` **import mọi module test khi collect**, kể cả module bị `-m`
+        # loại ra sau đó. Bộ test của `W6-02` nạp `guard`/`zerogpu`, và
+        # `zerogpu` `import spaces` ⇒ thiếu extra này thì cả tầng chết ở bước
+        # collect với **exit code 2**, không phải một bài đỏ. Đã xảy ra thật
+        # (lượt `7d14449`), và bộ phát annotation lúc ấy không đọc được gì.
+        run: uv sync --extra dev --extra serving --extra llm --extra pipeline
+          --extra qdrant --extra space
       - name: Đợi Qdrant
         run: |
           for i in $(seq 1 30); do
@@ -218,7 +253,18 @@ jobs:
       - name: Nêu tên bài đỏ ra annotation
         if: failure()
         run: |
-          sed -n '/short test summary info/,$p' pytest.log             | grep -E '^(FAILED|ERROR)'             | while IFS= read -r line; do echo "::error::$line"; done
+          named=$(sed -n '/short test summary info/,$p' pytest.log             | grep -E '^(FAILED|ERROR)' || true)
+          if [ -n "$named" ]; then
+            echo "$named" | while IFS= read -r line; do echo "::error::$line"; done
+          else
+            # ⭐⭐ Không có mục "short test summary info" là một CHẨN ĐOÁN, không
+            # phải một chỗ trống: pytest chết **trước khi chạy bài nào** (exit 2 =
+            # lỗi collect / lỗi tham số). Bản đầu của bước này chỉ đọc mục summary,
+            # nên đúng ca ấy nó phát ra **rỗng** và một lượt đỏ lại về đúng chữ
+            # "exit code 2" như trước khi có bản vá. Xảy ra thật ở `7d14449`.
+            echo "::error::pytest không tới được mục summary (thường là lỗi collect) — 25 dòng cuối:"
+            tail -n 25 pytest.log | while IFS= read -r line; do echo "::error::$line"; done
+          fi
 
   # ---------------------------------------------------------------- tầng 4
   smoke-eval:
