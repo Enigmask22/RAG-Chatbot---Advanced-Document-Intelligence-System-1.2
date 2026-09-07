@@ -115,9 +115,51 @@ def postgres_check(engine: Engine) -> None:
         )
     if found != want:
         raise MigrationStateError(
-            f"DB đang ở migration {found} nhưng mã này cần {want} — "
-            "deploy đã lên trước khi migration chạy."
+            f"DB đang ở migration {found} nhưng mã này cần {want} — {_skew_hint(found, want)}"
         )
+
+
+def _skew_hint(found: str, want: str) -> str:
+    """⭐⭐ `found != want` phủ **hai** chiều lệch, và chúng cần hai hành động ngược nhau.
+
+    Bản đầu của thông điệp này chỉ nói *"deploy đã lên trước khi migration
+    chạy"* — tức DB **sau** mã — và khuyên `alembic upgrade head`. Nhưng chiều
+    kia có thật và không hề hiếm: DB **trước** mã, vì image cũ hơn schema. Nó là
+    hệ quả **bình thường** của việc rollback ứng dụng mà không rollback schema
+    (`registry.py` có rollback), và của một `docker compose up` thiếu `--build`.
+    Gặp cảnh ấy, "chạy `alembic upgrade head`" gửi người đọc đi đúng hướng sai:
+    migration đã chạy rồi, thứ cũ là image.
+
+    ⚠️ Tìm ra vì gặp thật (07/09/2026): DB ở `0005_message_user_link`, container
+    cần `0003_message_query_plan`, và `/ready` khuyên chạy migration.
+
+    Hỏi đồ thị revision của alembic chứ không so chuỗi: tên revision không mang
+    thứ tự, nên `0005 > 0003` chỉ đúng nhờ một quy ước đặt tên mà không gì bắt
+    buộc. Không xác định được chiều thì nói thẳng là không xác định được.
+    """
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    config = Config()
+    config.set_main_option("script_location", str(_ALEMBIC_DIR))
+    script = ScriptDirectory.from_config(config)
+
+    # ⚠️ Ba cảnh, không hai. `iterate_revisions(want, "base")` **không** nổ khi
+    # `found` là revision lạ — nó chỉ duyệt tổ tiên của `want` — nên gộp "lạ" vào
+    # "đi trước" là đoán bừa dưới lớp áo của một phép kiểm.
+    if not any(rev.revision == found for rev in script.walk_revisions()):
+        return (
+            f"image này không biết revision {found} nào cả — DB đến từ một image "
+            "khác (mới hơn, hoặc một nhánh migration khác). Đối chiếu phiên bản "
+            "image trước, đừng chạy migration."
+        )
+    if found in {rev.revision for rev in script.iterate_revisions(want, "base")}:
+        return "DB đi SAU mã: deploy đã lên trước khi migration chạy. Chạy `alembic upgrade head`."
+    return (
+        "DB đi TRƯỚC mã: image cũ hơn schema (rollback ứng dụng mà không rollback "
+        "schema, hoặc `up` thiếu `--build`). Deploy lại image đúng phiên bản — "
+        "`alembic upgrade head` KHÔNG sửa được cảnh này."
+    )
 
 
 @contextmanager

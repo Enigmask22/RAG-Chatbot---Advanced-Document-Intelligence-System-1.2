@@ -62,6 +62,33 @@ def _key() -> str:
     return key
 
 
+def _require_api_container() -> None:
+    """Chốt skip cho bài test **không** đi qua fixture `client`.
+
+    ⚠️ Mọi bài e2e khác nhận `client`, và fixture ấy `skip` khi không có API. Bài
+    kiểm phiên bản thư viện lại nói chuyện thẳng với `docker compose exec`, nên
+    nó là bài duy nhất **đỏ** thay vì **skip** khi chưa `make up-api` — một
+    `pytest` trần trên máy sạch báo hỏng vì một lý do không phải lỗi. Và cái giá
+    thật không nằm ở màu: đây là phép kiểm duy nhất nối "cái đã đo" với "cái
+    đang chạy", nên nó là bài tệ nhất để người ta học cách bỏ qua.
+
+    ⭐ Phân biệt hai cảnh, chứ không nuốt cả hai: **không có container** là điều
+    kiện môi trường ⇒ skip; **có container mà probe hỏng** là hỏng thật ⇒ để nó
+    nổ. Một `except Exception: skip` sẽ giấu đúng chế độ hỏng mà `W5-01` đã gặp.
+    """
+    try:
+        listed = subprocess.run(
+            [*COMPOSE, "ps", "--status", "running", "-q", "api"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:  # docker không có / compose lỗi
+        pytest.skip(f"không hỏi được compose ({exc}) — chạy `make up-api` trước")
+    if not listed.stdout.strip():
+        pytest.skip("container `api` không chạy — chạy `make up-api` trước")
+
+
 @pytest.fixture(scope="module")
 def client() -> Any:
     with httpx.Client(base_url=BASE, timeout=120.0) as c:
@@ -236,6 +263,8 @@ def test_the_container_runs_the_versions_the_lockfile_pins() -> None:
     dự án nối được "cái đã đo" với "cái đang chạy" ở mức thư viện.
     """
     import tomllib
+
+    _require_api_container()
 
     lock = tomllib.loads(Path("uv.lock").read_text(encoding="utf-8"))
     locked: dict[str, set[str]] = {}
