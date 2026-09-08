@@ -15,6 +15,7 @@ Ba thứ ở đây không giả lập được, và cả ba là lý do module n�
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -153,24 +154,61 @@ def _turn(client: TestClient, message: str = "RRF là gì?", *, key: str = KEY) 
     response.read()
     assert response.status_code == 200, response.text
     frames = dict(_frames(response))
-    _drain_saves(client)
+    _drain_saves()
     return frames["meta"]
 
 
-def _drain_saves(client: TestClient) -> None:
-    """Đợi task ghi Postgres chạy xong.
+#: Hạn chờ task ghi Postgres, tính bằng **giây thật**. Đo cục bộ: 9,0–13,4 ms.
+#: Để rộng gấp ~750× vì con số này chỉ tốn thời gian khi hệ thật sự hỏng — một
+#: `INSERT` + `COMMIT` mất hơn 10 s là một lỗi đáng đỏ, không phải một runner bận.
+DRAIN_TIMEOUT_S = 10.0
+
+
+def _drain_saves() -> None:
+    """Đợi task ghi Postgres chạy xong, với hạn chờ tính bằng **giây**.
 
     Không có `await` nào ở đây bắt được nó: `_schedule_save` cố ý là đồng bộ
-    (xem §"Ngắt kết nối" của `serving/core/chat.py`). Một request rẻ khác là
-    cách ép vòng lặp sự kiện quay thêm vài vòng.
+    (xem §"Ngắt kết nối" của `serving/core/chat.py`).
+
+    ⭐⭐ Bản đầu lặp **50 lần một request `/health`**, kèm lời giải thích rằng
+    đó là *"cách ép vòng lặp sự kiện quay thêm vài vòng"*. Hai bài trong module
+    này đỏ trên CI vì nó, và cả hai vế của câu ấy đều sai:
+
+    * **Không cần ép.** `TestClient` chạy vòng lặp trong một luồng portal riêng
+      chứ không trong luồng test, nên task nền tiến triển dù ở đây chỉ `sleep`.
+      Thay `/health` bằng `sleep(1 ms)` thuần: 24/24 vẫn xanh, và số vòng cần
+      còn **giảm** (7–9 → 5–8). Những request ấy chưa bao giờ làm việc chúng
+      được ghi là làm.
+    * **⚠️ Ngân sách bị tính bằng SAI ĐƠN VỊ.** "50 vòng" quy ra
+      `50 × độ trễ(/health)` ≈ 60 ms trên máy này — một đại lượng đo **độ nhanh
+      của một endpoint không chạm Postgres**, trong khi thứ đang chờ là một
+      vòng đi-về Postgres. Hai đại lượng ấy **không tương quan**: một lần khựng
+      của Postgres (checkpoint, fsync, mở kết nối mới trong pool) kéo dài vế
+      phải mà không đụng vế trái. Nên **không hằng số nào** làm nó an toàn —
+      nâng 50 lên 500 chỉ làm bài test chập chờn hiếm hơn, đúng như việc nới
+      `sleep` trong `test_ttl_expires_entry` sẽ chỉ thu hẹp cửa sổ chứ không
+      xoá nó.
+
+    ⚠️ Tham số `client` **biến mất cùng với `/health`** — và suýt thì không.
+    Bản nháp của bản vá này giữ nó lại kèm lý do *"bỏ đi là đổi 22 chỗ gọi"*.
+    Đếm ra thì có **đúng một** chỗ gọi: 22 là số **lượt chạy**, không phải số
+    **chỗ gọi**. Đó đúng là lỗi mà `NEW-10` §4 vừa ghi lại cùng ngày — giữ một
+    thứ thừa rồi bịa một lý do nghe hợp lý cho nó — tái diễn trong vòng một
+    giờ, ở tay cùng một người. Nên: đếm, đừng ước lượng.
     """
     from serving.core.chat import _PENDING
 
-    for _ in range(50):
-        if not _PENDING:
-            return
-        client.get("/health")
-    raise AssertionError("task ghi message không kết thúc")
+    deadline = time.monotonic() + DRAIN_TIMEOUT_S
+    while _PENDING:
+        if time.monotonic() > deadline:
+            # Báo cáo **cái gì** còn treo, không chỉ **rằng** có gì đó treo:
+            # chậm và treo là hai chẩn đoán khác nhau, và lượt đỏ sau phải phân
+            # biệt được chúng từ chính dòng annotation của CI.
+            raise AssertionError(
+                f"task ghi message không kết thúc sau {DRAIN_TIMEOUT_S:.0f}s; "
+                f"còn treo: {[t.get_coro() for t in _PENDING]}"
+            )
+        time.sleep(0.001)
 
 
 def _rate(
