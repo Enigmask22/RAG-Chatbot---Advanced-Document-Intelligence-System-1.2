@@ -202,10 +202,22 @@ class TestCitationsAreClickableWhileStillStreaming:
     """
 
     def test_a_cite_button_appears_before_the_done_frame(self, page: Page) -> None:
-        page.fill("#q", QUESTION)
+        """⚠️ Đo trên lượt GIỮA hội thoại, không phải lượt đầu — có lý do.
+
+        Lượt đầu với `QUESTION` gần như chắc chắn trúng semantic cache (các bài
+        trước trong cùng phiên đã hỏi đúng câu ấy, và Redis giữ cache qua
+        volume), mà một lượt replay phát mọi khung trong một flush: quãng
+        streaming mà bài này đo **không tồn tại**, và phù hiệu "trả từ cache"
+        có mặt cùng lúc với nút cite ⇒ đỏ vì trạng thái cache chứ không vì mã
+        trang. Đúng lớp lỗi phụ-thuộc-môi-trường. `cache_eligible` (`W4-10`)
+        loại mọi câu hỏi có lịch sử, nên câu thứ HAI trong cùng hội thoại luôn
+        stream thật — bằng thiết kế của server, không phải bằng may mắn."""
+        _ask(page)  # lượt 1: mở hội thoại (trúng cache hay không đều được)
+        page.fill("#q", "Chi đầu tư công cho hạ tầng giao thông thì thay đổi thế nào?")
         page.click("#send")
-        page.wait_for_selector(".turn .answer button.cite", timeout=120_000)
-        assert page.locator(".turn .meta .badge").count() == 0, (
+        turn = page.locator(".turn").last
+        turn.locator(".answer button.cite").first.wait_for(timeout=120_000)
+        assert turn.locator(".meta .badge").count() == 0, (
             "khung `done` đã tới trước khi có nút citation — nút chỉ xuất hiện ở cuối"
         )
 

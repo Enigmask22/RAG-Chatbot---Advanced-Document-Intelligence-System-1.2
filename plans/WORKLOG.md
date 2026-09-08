@@ -5240,3 +5240,28 @@ phép đếm hôm nay (3.119 test · 278 file nguồn · 74 báo cáo); câu "m�
 pytest trần N xanh" thay bằng câu CI-kiểm-được vì lượt trần hôm nay bị dừng
 giữa chừng theo giờ tắt máy của người dùng — không khai số chưa đo xong.
 `G3` ✅ (3/3 từ 03/09 — header từng đứng ⬜, lệch sổ không phải lệch số).
+
+**Phần nối phiên (sau khi bật lại máy):** CI xanh trên `a4cd516` — cả bốn commit
+hôm qua được kiểm chứng. Đóng nốt vòng bị giờ-tắt-máy cắt ngang: chạy tầng e2e
+(21 bài, lần đầu sau khi UI có form upload) trên container thật. Hai phát hiện:
+
+1. **Tự dẫm vào `TD-40`**: khoá e2e mint với `tenant_id="e2e"` trong khi mọi
+   point Qdrant mang `tenant_id="public"` ⇒ truy hồi rỗng, 5 bài citation đỏ,
+   và câu trả lời rỗng bị cache lại dưới tenant ấy. Chính docstring `TD-40`
+   mô tả đúng triệu chứng ("index vô hình với người dùng đã xác thực") — đọc
+   lại nó mới tra ra. Mint lại đúng tenant, dọn 2 khoá rác + entry cache nhiễm
+   (`semcache:e2e:*`, cache tách namespace theo tenant nên không lây sang
+   `public`).
+
+2. **Một bài e2e phụ thuộc trạng thái cache** (lớp lỗi phụ-thuộc-môi-trường,
+   lần thứ sáu): `test_a_cite_button_appears_before_the_done_frame` đo "quãng
+   streaming" — thứ không tồn tại trên một lượt replay, mà `QUESTION` dùng
+   chung thì các bài trước đã hâm cache và Redis giữ cache qua volume ⇒ bài đỏ
+   vĩnh viễn sau lần chạy đầu tiên của môi trường. Sửa bằng THIẾT KẾ của server
+   chứ không bằng may mắn: hỏi câu thứ HAI trong cùng hội thoại —
+   `cache_eligible` (`W4-10`) loại mọi câu có lịch sử nên lượt ấy luôn stream
+   thật. Assert giữ nguyên ⇒ sức bắt mutation `U7` giữ nguyên, và giờ nó đo
+   được ở MỌI lần chạy thay vì chỉ lần đầu.
+
+e2e 21/21 xanh sau sửa. Chi phí thật (đọc từ bộ đếm `spend:*` trong Redis):
+$0,0045 — vài lời gọi DeepSeek của các lượt không trúng cache.
