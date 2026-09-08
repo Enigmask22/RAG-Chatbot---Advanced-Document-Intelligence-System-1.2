@@ -98,16 +98,17 @@ Gate: ⬜ chưa chạy · 🟡 đã chạy FAIL · ✅ PASS
 
 | Metric                       | Baseline (hệ thống hiện tại) | Hiện tại                                  | Mục tiêu  | Nguồn                                          |
 | ---------------------------- | ---------------------------- | ----------------------------------------- | --------- | ---------------------------------------------- |
-| Recall@10                    | **0,2257**                   | **0,7352**                                | ≥ 0.90    | `reports/runs/bgem3-rr-c50-retrieval.json`     |
-| Recall@5                     | **0,1746**                   | **0,7026**                                | —         | `reports/runs/bgem3-rr-c50-retrieval.json`     |
-| nDCG@10                      | **0,1621**                   | **0,6481**                                | ≥ 0.82    | `reports/runs/bgem3-rr-c50-retrieval.json`     |
-| MRR                          | **0,1660**                   | **0,6440**                                | ≥ 0.75    | `reports/runs/bgem3-rr-c50-retrieval.json`     |
-| MAP@20                       | **0,1349**                   | **0,6051**                                | —         | `reports/runs/bgem3-rr-c50-retrieval.json`     |
-| hit_rate@1                   | **0,1196**                   | **0,5598**                                | —         | `reports/runs/bgem3-rr-c50-retrieval.json`     |
+| Recall@10                    | **0,2257**                   | **0,8022**                                | ≥ 0.90    | `bundles/rag-bundle-v0.2.1/manifest.json` (bundle ĐANG phục vụ, chunk contextual) |
+| Recall@5                     | **0,1746**                   | **0,7847**                                | —         | `bundles/rag-bundle-v0.2.1/manifest.json` (bundle ĐANG phục vụ, chunk contextual) |
+| nDCG@10                      | **0,1621**                   | **0,7079**                                | ≥ 0.82    | `bundles/rag-bundle-v0.2.1/manifest.json` (bundle ĐANG phục vụ, chunk contextual) |
+| MRR                          | **0,1660**                   | **0,7047**                                | ≥ 0.75    | `bundles/rag-bundle-v0.2.1/manifest.json` (bundle ĐANG phục vụ, chunk contextual) |
+| MAP@20                       | **0,1349**                   | **0,6636**                                | —         | `bundles/rag-bundle-v0.2.1/manifest.json` (bundle ĐANG phục vụ, chunk contextual) |
+| hit_rate@1                   | **0,1196**                   | **0,6220**                                | —         | `bundles/rag-bundle-v0.2.1/manifest.json` (bundle ĐANG phục vụ, chunk contextual) |
 | Faithfulness                 | _chưa đo_ | **0,9877** (mệnh đề có trích nguồn, n=407) · **0,9568** (mọi mệnh đề thật, n=532) | ≥ 0.92 | ✅ `runs/w5-answers-v1-generation.json` |
 | Citation accuracy            | _chưa đo_ | **0,8662** cấp quote (n=396) · 0,9877 cấp mệnh đề | ≥ 0.85 | ✅ **ĐẠT** từ 2026-09-05 — 0,8308 cũ có **19 từ chối oan của matcher** (dấu lược `...` bị coi là quote bịa); `NEW-08` sửa matcher, chấm lại cùng 396 quote: 14 được cứu, 0 rớt. `probes/new08-td64-rescore.json` · ~~`TD-64`~~ |
 | Refusal correctness          | _chưa đo_ | **0,9091** (220/242) · recall 30/33 · từ chối oan 19/209 | ≥ 0.85 | ✅ `runs/w5-answers-v1-generation.json` |
-| p95 latency (truy hồi)       | **32,8 ms**                  | **604,0 ms**                              | —         | `reports/runs/bgem3-rr-c50-retrieval.json`     |
+| p95 latency (truy hồi)       | **32,8 ms**                  | **759,0 ms**                              | —         | `bundles/rag-bundle-v0.2.1/manifest.json` (bundle ĐANG phục vụ, chunk contextual) |
+
 | p50 latency · nhánh hybrid   | —                            | **31,3 ms** (= dense)                     | —         | `reports/runs/bgem3-rrf-k1-c20-retrieval.json` |
 | p50 latency · nhánh reranked | —                            | **534,4 ms** (c=50) · **232,8 ms** (c=20) | —         | `reports/tasks/w2-05-reranker.md` §5           |
 | p95 latency (end-to-end) | **4842 ms** (`W5-11`, 242 request, **cache tắt**) | — | ≤ 3500 ms | ❌ **KHÔNG ĐẠT** (138%), và `W6-05` chứng minh **không đạt được bằng tối ưu**: bỏ TOÀN BỘ truy hồi + rerank vẫn còn 4.055 ms, `c=20` dự báo ~4.431 ms. `W5-11` đã loại trừ đòn bẩy đổi model (GLM chậm hơn 2,2×). Ngân sách này viết ở `W1` **trước khi có streaming** và bị chi phối bởi độ dài câu trả lời (completion p50 185 token, p95 622) — một tính chất của *câu hỏi*, không của *hệ thống*. `W6-05` đề xuất **thêm** một SLO TTFT chứ không thay dòng này → mục dưới |
