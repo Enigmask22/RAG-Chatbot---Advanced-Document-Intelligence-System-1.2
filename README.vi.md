@@ -44,23 +44,13 @@ nào trả nổi giá, quy ước được dời vào mã và ghim bằng test �
 
 ---
 
-## Trạng thái
+## Dự án được kiểm chứng thế nào
 
-| Giai đoạn | Xong | Gate | Ghi chú |
-|---|:---:|:---:|---|
-| **W0** · Setup & quyết định | 3/8 | — | 2 đang làm; các mục cần GPU thuê hoãn lại |
-| **W1** · Nền móng + baseline eval | **13/13** | 🟡 | PASS **có điều kiện** — golden set do model review, chưa phải người (`TD-13`) |
-| **W2** · Nâng cấp truy hồi | **10/10** | ✅ | tiêu chí latency đóng bằng quyết định (08/09/2026): SLO vận hành là **TTFT p95 ≤ 2.000 ms ở tải thiết kế**; dòng đầu-cuối 3.500 ms giữ ❌ có chủ đích — xem dưới |
-| **W3** · Ingestion + chunking | 8/9 | ⬜ | còn `W3-09` |
-| **W4** · Serving Plane | **13/13** | 🟨 | API, auth, SSE, trích dẫn, cache, guardrails, Docker; gate 2,5/3 — vế "clone sạch ≤ 5 phút" chỉ đúng khi cache ấm (`TD-56`) |
-| **W5** · Eval đầy đủ + observability | **11/11** | ✅ | eval sinh, LLM judge + hiệu chuẩn, gate phát hành, Langfuse, Prometheus, CI |
-| **W6** · Hoàn thiện & trình bày | 6/8 | ⬜ | web UI và Space demo `[~]` — cả hai chờ demo lên public; load test, security pass, cửa upload, evidence CV, README xong |
-
-**2.892 test** — 2.351 unit · 382 integration (Qdrant/Postgres/Redis thật) · 138
-security · 21 e2e (trên stack compose thật và image thật). Một lượt `pytest` mặc
-định khi container API đang chạy: **2.870 xanh, 22 skip**. Không có `make up-api`
-thì tầng e2e **skip** chứ không đỏ, và đó là chủ ý. `ruff` và `mypy` (kể cả
-`--platform linux`) sạch trên 168 file Python. **60 báo cáo kỹ thuật**, mỗi hạng
+**3.119 test** — 2.548 unit · 412 integration (Qdrant/Postgres/Redis thật) · 138
+security · 21 e2e (trên stack compose thật và image thật). Tầng mặc định và tầng
+integration chạy xanh trên CI ở mỗi lần push; không có `make up-api` thì tầng
+e2e **skip** chứ không đỏ, và đó là chủ ý. `ruff` và `mypy` (kể cả
+`--platform linux`) sạch trên 278 file nguồn. **74 báo cáo kỹ thuật**, mỗi hạng
 mục một bản.
 
 ---
@@ -118,9 +108,9 @@ nào**, nên các con số này chưa từng được đo — và chính điều
 
 | Metric | POC baseline | Hiện tại | Mục tiêu |
 |---|---:|---:|---:|
-| Faithfulness (mệnh đề có trích nguồn, n=407) | *chưa từng đo* | **0,9877** | ≥ 0,92 ✅ |
-| Citation accuracy (cấp quote, n=396) | *chưa từng đo* | **0,8662** | ≥ 0,85 ✅ |
-| Refusal correctness (220/242) | *chưa từng đo* | **0,9091** | ≥ 0,85 ✅ |
+| Faithfulness (mệnh đề có trích nguồn, n=407) | *chưa từng đo* | **0,9877** | ≥ 0,92 — đạt |
+| Citation accuracy (cấp quote, n=396) | *chưa từng đo* | **0,8662** | ≥ 0,85 — đạt |
+| Refusal correctness (220/242) | *chưa từng đo* | **0,9091** | ≥ 0,85 — đạt |
 | Citation coverage | *chưa từng đo* | 0,6186 | — |
 | Answer relevancy | *chưa từng đo* | 0,7479 | — |
 
@@ -151,7 +141,8 @@ HTTP**, hiệu chỉnh theo 242 request thật:
   bộ** truy hồi và rerank — một cấu hình không tưởng — vẫn còn 4.055 ms, vì 84%
   của p95 là thời gian nhà cung cấp sinh token. Ngân sách ấy viết trước khi có
   streaming và bị độ dài câu trả lời chi phối — một tính chất của *câu hỏi*.
-  Quyết định (08/09/2026): dòng này giữ ❌ (thay nó là dời cột gôn), và **SLO
+  Quyết định (08/09/2026): dòng này giữ nguyên là *không đạt* (thay nó là dời
+  cột gôn), và **SLO
   vận hành là TTFT p95 ≤ 2.000 ms ở tải thiết kế** — con số người dùng một API
   stream thật sự cảm thấy, và là con số nhạy với thứ ta điều khiển được. Quan
   sát được trong production qua `rag_ttft_seconds`, bucket đúng tại 2,0 s.

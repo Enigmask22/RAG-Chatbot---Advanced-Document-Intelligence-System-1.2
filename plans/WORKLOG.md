@@ -5189,3 +5189,54 @@ annotation ở lần đỏ sau*, kèm nghi phạm đáng soi trước (thứ t�
 tick là chuyện có thật).
 
 CI xanh cả 4 job trên `9844321`.
+
+
+## Phiên 2026-09-08 (23) · Ba quyết định người dùng — TTFT SLO chốt, `NEW-11` "cho phép", và hai README trôi khỏi sổ
+
+Người dùng chốt ba việc trong một câu: TTFT SLO < 2.000 ms, upload "có vẻ hợp
+lý", `TD-13`/`W6-02` tự làm sau — kèm lệnh "hoàn thiện 100% đảm bảo production".
+
+**TTFT (`ca1d61f`).** Phần việc thật không phải sửa bảng: một SLO chưa quan sát
+được thì chưa phải SLO. `ttfb_ms` vốn đã đo ở token đầu cho khung `done`; lượt
+này nối nó tới Prometheus (`rag_ttft_seconds`) và chỗ dễ sai là **đếm trùng** —
+sink chỉ đọc từ `_ANSWER_SPANS` (danh sách đóng), lượt cache replay VÀO SLO
+(bỏ những lượt nhanh nhất là tự làm xấu p95), lượt `empty` KHÔNG vào. `G2` lên
+✅ 4/4 với tick mang nghĩa *đã có kết luận cuối*, không phải *đạt ngưỡng 3.500*.
+Tiêm 7/7 đỏ; `M7` chỉ chết bởi bài integration đọc `/metrics` thật.
+
+**`NEW-11` (`369b55d`).** Nỗi sợ của dòng nợ — nút tải-lên phá quy tắc corpus
+công khai — đóng bằng cấu trúc: upload là *cửa nhận tài liệu của Pipeline
+Plane*, đi đúng cửa license mọi tài liệu World Bank đã đi (`LICENSE_ALLOWLIST`
++ `source_url` bắt buộc + `validate_manifest` chặn trùng), danh tính đã xác
+thực do proxy đóng dấu (client tự khai bị `extra=forbid` từ chối), và tài liệu
+tới người dùng **qua bundle đã đo** — ghi thẳng vào collection đang phục vụ sẽ
+bị `TD-38` chặn ở reload kế tiếp, đúng thiết kế. `LICENSE_ALLOWLIST` dời về
+`rag_core.schemas` vì serving không import được pipeline; ba bản dùng ghim bằng
+test quan hệ kiểu `NEW-13`. Trần 512 KiB đếm **byte UTF-8** — 200.000 chữ "ạ"
+là 600.000 byte. Tiêm 11/11 đỏ.
+
+⭐ **Bài test số học của CHECKLIST bắt được chính tôi**: tick `NEW-11` mà quên
+cộng lại hai dòng tổng ⇒ `test_hai_dong_tong_cong_lai_dung` đỏ. Nó tồn tại
+đúng để bắt việc ấy. Và cùng phiên: một lượt chạy nền dẫn pytest qua
+`| tail -2` — exit code là của `tail`, **luôn 0** — đúng cái bẫy `pipefail`
+mà entry CI hôm trước vừa viết; bài đỏ chỉ lộ vì dòng FAILED tình cờ nằm trong
+hai dòng cuối. Lượt sau để pytest tự giữ exit code.
+
+**Hai README trôi khỏi CHECKLIST ở BỐN ô (`6b43baf`)** — nặng nhất là `W4`:
+README khai gate ✅ trong khi `G4` thật là 🟨 2,5/3. Một tài liệu công khai khai
+TỐT HƠN sổ nguồn sự thật là đúng loại lỗi dự án này tồn tại để không mắc. Kèm:
+`NEW-09` hết là "đề xuất còn mở" (đã đo và bác bỏ), `W2` 9/9→10/10, `W6` 2/8→6/8.
+Và một chiều trôi ngược tìm ra khi rà: **`G3` đủ 3/3 tiêu chí từ 03/09 mà header
+còn ⬜** — lệch sổ, không phải lệch số; sửa cùng lượt docs cuối phiên.
+
+CI xanh trên cả ba commit. Chi phí phiên: $0.
+
+**Bổ sung cùng phiên (yêu cầu người dùng):** bỏ bảng Status (phase × gate) khỏi
+hai README — người dùng không muốn người ngoài thấy tiến độ nội bộ — và quét
+sạch emoji trạng thái (✅/❌/🟡/🟨/⬜/ℹ️) khỏi README + ARCHITECTURE/EVALUATION/
+BUNDLE cho bớt dấu vết "AI-generate": ⭐ bỏ hẳn (bold tự nhấn), ⚠ thành
+"Caveat:". Đoạn đếm test dời thành mục "How it is verified", số cập nhật theo
+phép đếm hôm nay (3.119 test · 278 file nguồn · 74 báo cáo); câu "một lượt
+pytest trần N xanh" thay bằng câu CI-kiểm-được vì lượt trần hôm nay bị dừng
+giữa chừng theo giờ tắt máy của người dùng — không khai số chưa đo xong.
+`G3` ✅ (3/3 từ 03/09 — header từng đứng ⬜, lệch sổ không phải lệch số).

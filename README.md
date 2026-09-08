@@ -12,7 +12,7 @@
 > [`plans/WORKLOG.md`](plans/WORKLOG.md) · one report per task in
 > [`plans/reports/`](plans/reports/README.md).
 >
-> ℹ️ Those engineering journals are written in **Vietnamese** — they are working
+> Note: those engineering journals are written in **Vietnamese** — they are working
 > documents, not marketing. This README covers what they contain.
 
 ---
@@ -47,24 +47,14 @@ see [`security-final.md`](plans/reports/tasks/security-final.md) §5.
 
 ---
 
-## Status
+## How it is verified
 
-| Phase | Done | Gate | Notes |
-|---|:---:|:---:|---|
-| **W0** · Setup & decisions | 3/8 | — | 2 in progress; rented-GPU items deferred |
-| **W1** · Foundations + eval baseline | **13/13** | 🟡 | conditional PASS — golden set is model-reviewed, not human-reviewed (`TD-13`) |
-| **W2** · Retrieval upgrade | **10/10** | ✅ | latency criterion closed by decision (2026-09-08): the operating SLO is **TTFT p95 ≤ 2,000 ms at design load**; the 3,500 ms end-to-end line stays ❌ on purpose — see below |
-| **W3** · Ingestion + chunking | 8/9 | ⬜ | `W3-09` still open |
-| **W4** · Serving Plane | **13/13** | 🟨 | API, auth, SSE, citations, cache, guardrails, Docker; gate at 2.5/3 — the "clean clone ≤ 5 min" clause only holds with a warm cache (`TD-56`) |
-| **W5** · Full eval + observability | **11/11** | ✅ | generation eval, LLM judge + calibration, release gate, Langfuse, Prometheus, CI |
-| **W6** · Polish & presentation | 6/8 | ⬜ | web UI and Space demo `[~]` — both wait on the demo going public; load test, security pass, upload gate, CV evidence, README done |
-
-**2,892 tests** — 2,351 unit · 382 integration (real Qdrant/Postgres/Redis) · 138
-security · 21 e2e (against the real compose stack and the real image). A default
-`pytest` run with the API container up: **2,870 passed, 22 skipped**. Without
-`make up-api` the e2e tier skips instead of failing, on purpose. `ruff` and
-`mypy` (including `--platform linux`) clean across 168 Python files. **60
-engineering reports**, one per task.
+**3,119 tests** — 2,548 unit · 412 integration (real Qdrant/Postgres/Redis) · 138
+security · 21 e2e (against the real compose stack and the real image). The
+default tier and the integration tier both run green in CI on every push;
+without `make up-api` the e2e tier skips instead of failing, on purpose. `ruff`
+and `mypy` (including `--platform linux`) are clean across 278 source files.
+**74 engineering reports**, one per task.
 
 ---
 
@@ -122,9 +112,9 @@ itself the before state worth recording.
 
 | Metric | POC baseline | Current | Target |
 |---|---:|---:|---:|
-| Faithfulness (cited claims, n=407) | *never measured* | **0.9877** | ≥ 0.92 ✅ |
-| Citation accuracy (quote level, n=396) | *never measured* | **0.8662** | ≥ 0.85 ✅ |
-| Refusal correctness (220/242) | *never measured* | **0.9091** | ≥ 0.85 ✅ |
+| Faithfulness (cited claims, n=407) | *never measured* | **0.9877** | ≥ 0.92 — met |
+| Citation accuracy (quote level, n=396) | *never measured* | **0.8662** | ≥ 0.85 — met |
+| Refusal correctness (220/242) | *never measured* | **0.9091** | ≥ 0.85 — met |
 | Citation coverage | *never measured* | 0.6186 | — |
 | Answer relevancy | *never measured* | 0.7479 | — |
 
@@ -156,7 +146,8 @@ and calibrated against 242 real requests:
   still leaves 4,055 ms, because 84% of p95 is the provider generating tokens.
   The budget was written before streaming existed and is dominated by answer
   length — a property of the *question*. Decision (2026-09-08): the line stays
-  ❌ (replacing it would move the goalposts) and the **operating SLO is TTFT
+  recorded as not met (replacing it would move the goalposts) and the
+  **operating SLO is TTFT
   p95 ≤ 2,000 ms at design load** — the number a user of a streaming API
   actually feels, and the one sensitive to what we control. It is observable
   in production as `rag_ttft_seconds` with a bucket edge exactly at 2.0 s.

@@ -72,12 +72,12 @@ trees with `ast` and fails CI on a violation. Four rules:
    seconds to `make test` and forces CI to install a GPU stack in order to run
    unit tests.
 
-⭐ Rule 4 has a subtlety the test handles: imports inside `if TYPE_CHECKING:` and
+Rule 4 has a subtlety the test handles: imports inside `if TYPE_CHECKING:` and
 inside function bodies do not count, because neither executes at runtime. Without
 that carve-out the rule would forbid type annotations, and a rule that forbids
 something reasonable gets disabled.
 
-⚠️ These are AST checks on **import statements**. They cannot see a violation
+Caveat: These are AST checks on **import statements**. They cannot see a violation
 smuggled through `importlib`, and they are not meant to — the point is to make the
 common mistake loud, not to build a sandbox.
 
@@ -123,7 +123,7 @@ one immutable, checksummed, versioned artifact. Full detail in
 * **A bundle identity check runs at load** and refuses a bundle whose declared
   model/device/dtype/`max_length` do not match what actually loaded.
 
-⚠️ That identity check has a known blind spot, found in
+Caveat: That identity check has a known blind spot, found in
 [`w5-01-generation-eval.md`](plans/reports/tasks/w5-01-generation-eval.md): it does **not**
 compare library versions. An image that drifted to `transformers 5.16.1` while the
 lockfile pinned `5.15.0` reported `runtime_drift: null` the whole time, and every
@@ -168,13 +168,13 @@ sequenceDiagram
 
 Six SSE frame types: `meta`, `sources`, `delta`, `citations`, `done`, `error`.
 
-⭐ **`sources` and `citations` answer different questions.** `sources` is what was
+**`sources` and `citations` answer different questions.** `sources` is what was
 handed to the model. `citations` is what the model claims it used — *after each
 claim was checked against the actual chunk text*. Conflating them turns "the model
 said it cited this" into "this was cited", which is the exact failure a citation
 feature exists to prevent.
 
-⭐ **The cache key is a namespace, not a hash of the question.** It carries the
+**The cache key is a namespace, not a hash of the question.** It carries the
 bundle version, the prompt version, `top_k`, **and** `provider:model`. The last
 field was missing until `W5-11`, and its absence made a generator ablation compare
 DeepSeek against itself while every number looked plausible. A fourth axis
@@ -191,11 +191,11 @@ replayed by a server pointed at the real provider.
 | 2 · Qdrant | `tenant_filter()` is applied at query construction | a retrieval path that forgets the filter |
 | 3 · Postgres | row-level security, `FORCE ROW LEVEL SECURITY`, on a **non-superuser** role | any query anywhere that forgets `WHERE tenant_id = …` |
 
-⭐ The third layer is the one that changes how code is written: a forgotten
+The third layer is the one that changes how code is written: a forgotten
 predicate yields **an empty result**, not another tenant's data. The failure mode
 becomes visibly wrong instead of invisibly wrong.
 
-⚠️ Two traps that were live and are now closed. The app connects with
+Caveat: Two traps that were live and are now closed. The app connects with
 `postgres_app_dsn`, not `postgres_dsn` — the image's `POSTGRES_USER` is a
 superuser, and **a superuser bypasses RLS entirely**, even `FORCE`. Connecting
 with the wrong DSN turns five policies into decoration while every configuration
@@ -215,7 +215,7 @@ returns 503 unless **all three** hold:
 2. Qdrant answers a count on the collection the bundle names;
 3. the database is at **the migration revision this image expects**.
 
-⭐ Check 3 exists because `SELECT 1` answers "the socket is open", and that is not
+Check 3 exists because `SELECT 1` answers "the socket is open", and that is not
 how this system fails. It fails as: new image deployed, `alembic upgrade head`
 never ran, pod reports ready, takes traffic, and every request dies on
 `column … does not exist` — with `SELECT 1` green throughout.
@@ -225,7 +225,7 @@ not from a constant in code: a constant has to be edited by hand for every new
 migration, and the first time someone forgets, the check becomes a check that is
 always green.
 
-⚠️ And the skew has **two directions**, which need opposite actions. DB behind code
+Caveat: And the skew has **two directions**, which need opposite actions. DB behind code
 → run the migration. DB *ahead* of code → the image is stale; the migration is
 already applied and running it does nothing. The second case is the normal
 consequence of rolling back the application without rolling back the schema, and
@@ -251,7 +251,7 @@ the readiness message names the direction rather than assuming one.
 * **Langfuse** (self-hosted): one trace per request covering rewrite → retrieve
   (with scores) → rerank → prompt → completion, with cost and tokens per step.
 * **Prometheus + Grafana**: the "RAG Health" dashboard at `:3001`.
-  ⚠️ Prometheus histograms are **cumulative counters**; reading one directly gave
+  Caveat: Prometheus histograms are **cumulative counters**; reading one directly gave
   `rerank p95 = 9,375 ms` at concurrency 1 because a cold-start sample leaked into
   the window. Every panel and every measurement script reads
   `delta(before, after)`, and there is a test that reconstructs exactly that

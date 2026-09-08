@@ -78,7 +78,7 @@ DeepSeek-v4-flash reads batches of real chunks and writes questions in seven
 categories. It costs money, so it checkpoints: a long paid job with no checkpoint
 is a job that charges you twice for one interruption.
 
-⚠️ Four things went wrong on the first real run and are worth knowing before
+Caveat: Four things went wrong on the first real run and are worth knowing before
 re-running it: `deepseek-chat` is an **alias**, not a model (so pinning it pins
 nothing); a reasoning model made the `max_tokens` diagnosis misleading; running
 sequentially wasted an hour; and the job had no checkpoint. All four in
@@ -106,7 +106,7 @@ defect that only appeared at `chunk_size=400` — is in
 The real retriever runs over the draft set, and the output is a **review queue**,
 not a verdict.
 
-⭐ The design point is **asymmetry**: triage is allowed to say "this looks
+The design point is **asymmetry**: triage is allowed to say "this looks
 suspicious, a human should look", and is not allowed to say "this is fine, skip
 it". The threshold that decides suspicion is *calibrated*, not a constant, and
 `freeze` does not guess on triage's behalf
@@ -135,7 +135,7 @@ first so the reader spends attention on judgement rather than on bookkeeping.
 | table_lookup | 4 | 4 | 0 |
 | **total** | **266** | **242** | **24** |
 
-⚠️ `table_lookup` has **4 questions**. That is not a small sample, it is an
+Caveat: `table_lookup` has **4 questions**. That is not a small sample, it is an
 unmeasurable one — McNemar's `p` is bounded below by `2/2ⁿ`, so a 4-question group
 can never reach significance no matter what happens to it. The comparison code
 reports this as `INSUFFICIENT POWER`, which is a different outcome from "tie".
@@ -145,7 +145,7 @@ reports this as `INSUFFICIENT POWER`, which is a different outcome from "tie".
 Writes `golden_v1.jsonl` with a checksum, the reviewer identity, and the label
 digest. `make goldenset-verify` re-checks the file against that checksum.
 
-⚠️ A bug caught on the real run: `freeze` was **dropping `relevant_spans`** —
+Caveat: A bug caught on the real run: `freeze` was **dropping `relevant_spans`** —
 the field the entire anchoring design exists to produce
 ([`w1-11-review.md`](plans/reports/tasks/w1-11-review.md) §5).
 
@@ -220,7 +220,7 @@ itself is measured.
 * **Cohen's κ vs human = 0.7368**, on 50 hand-labelled examples, cross-checked
   against a judge from a different family
   ([`judge-calibration.md`](plans/reports/tasks/judge-calibration.md)).
-* ⚠️ **Changing only the judge model moves a metric by 7.5 points** (GLM-5.3-flash
+* Caveat: **Changing only the judge model moves a metric by 7.5 points** (GLM-5.3-flash
   0.9246 vs DeepSeek reasoning-on 1.0000). Which is why the judge model, its
   temperature and its cache digest are all recorded **inside the bundle**: a
   generation metric without its judge identity is not reproducible.

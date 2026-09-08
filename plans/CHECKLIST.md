@@ -55,13 +55,13 @@ Một task chỉ được `[x]` khi đủ **cả 4**:
 | W0 · Chuẩn bị                    |      8 |          3 |              0 |              2 |             0 |          2 |          1 |    —    |
 | W1 · Nền móng + Eval baseline    |     13 |         13 |              0 |              0 |             0 |          0 |          0 | `G1` 🟡 |
 | W2 · Retrieval upgrade           |     10 |         10 |              0 |              0 |             0 |          0 |          0 | `G2` ✅ |
-| W3 · Ingestion + Chunking        |      9 |          8 |              0 |              1 |             0 |          0 |          0 | `G3` ⬜ |
+| W3 · Ingestion + Chunking        |      9 |          8 |              0 |              1 |             0 |          0 |          0 | `G3` ✅ |
 | W4 · Serving Plane               |     13 |         13 |              0 |              0 |             0 |          0 |          0 | `G4` 🟨 |
 | W5 · Eval đầy đủ + Observability |     11 |         11 |              0 |              0 |             0 |          0 |          0 | `G5` ✅ |
 | W6 · Hoàn thiện & trình bày      |      8 |          6 |              0 |              2 |             0 |          0 |          0 | `G6` ⬜ |
-| **Tổng backlog gốc**             | **72** |     **64** |          **0** |          **5** |         **0** |      **2** |      **1** |   2/6   |
+| **Tổng backlog gốc**             | **72** |     **64** |          **0** |          **5** |         **0** |      **2** |      **1** |   3/6   |
 | §9 Task thêm mới (`NEW-xx`)      |     14 |         14 |              0 |              0 |             0 |          0 |          0 |    —    |
-| **Tổng cộng**                    | **86** |     **78** |          **0** |          **5** |         **0** |      **2** |      **1** |   2/6   |
+| **Tổng cộng**                    | **86** |     **78** |          **0** |          **5** |         **0** |      **2** |      **1** |   3/6   |
 
 Gate: ⬜ chưa chạy · 🟡 đã chạy FAIL · ✅ PASS
 
@@ -803,7 +803,7 @@ Gate: ⬜ chưa chạy · 🟡 đã chạy FAIL · ✅ PASS
   → Muốn mở khoá phải làm `TD-20` trước (chấm trên tập câu có nhãn không đổi, hoặc gán lại nhãn) — nó cũng mở khoá `TD-25` và `TD-26`. Đây là hạ tầng eval, không phải một ô ablation.
   · ✅ **DoD của hạng mục thì đã trả lời xong** ("giảm retrieval failure bao nhiêu %" — 15,8% / 23,1%, có số). Lưới 5 ô là phạm vi tôi tự mở rộng, không phải yêu cầu gốc; giữ `[~]` cho đúng chứ không chặn `G3`
 
-### `G3` — Gate tuần 3 ⬜
+### `G3` — Gate tuần 3 ✅ (3/3 — cả ba tiêu chí có số từ 03/09/2026; header này từng đứng ⬜ tới 08/09/2026 dù không tiêu chí nào còn mở — lệch sổ, không phải lệch số. `W3-09` giữ `[~]` vì lưới 5 ô tự mở rộng, nhưng gate không hỏi lưới ấy)
 
 - [x] Contextual/structure-aware chunking thắng hybrid cũ trên nDCG@10 (hoặc kết luận rõ là không, kèm số) — ✅ **THẮNG, đo 2026-09-03**: nDCG@10 **0,4442 → 0,5019** (dense, 13/15 metric có ý nghĩa) và **0,6481 → 0,6888** (điểm vận hành có reranker, 9/15). Retrieval failure@5 giảm **23,1%** ở điểm vận hành. ⚠️ `cross_lingual` là nhóm duy nhất đi ngược — ✅ **đã truy ra `TD-35`**: không phải reranker mà là **tầng hợp nhất RRF** (sparse tìm 1/43 câu nhóm này nhưng `k=1` vẫn cho trọng số ½; ngữ cảnh cho nó thêm chữ để sai tự tin hơn). Xem `reports/tasks/exp-002-contextual.md`. ~~chặn sau `W3-04`~~: hạ tầng sinh ngữ cảnh xong và đã chạy thật 60 chunk qua API (2026-09-03), còn thiếu đúng lượt chạy 15.814 chunk trên GPU thuê
 - [x] Ingest được ≥ 5 định dạng file, có test fixture cho từng loại — **7**: `.pdf` `.docx` `.pptx` `.xlsx` `.html` `.md` qua docling (`W3-01`, mỗi định dạng một fixture) + `.txt` qua `plain`. Và từ `TD-22` chúng đi được vào `corpus_loader` với văn bản parse **đã ghim**
