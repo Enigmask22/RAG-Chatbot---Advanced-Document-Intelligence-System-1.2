@@ -22,6 +22,7 @@ from typing import Any, cast
 import pytest
 
 from rag_core.llm import (
+    AllRoutesFailed,
     BudgetExceeded,
     ChatMessage,
     CircuitBreaker,
@@ -630,3 +631,68 @@ def test_a_cancelled_stream_does_not_reset_the_failure_counter() -> None:
     assert router.status()["routes"][0]["state"] == "open", (
         "ba lỗi thật phải mở mạch, kể cả khi một lần khách bỏ ngang chen giữa"
     )
+
+
+# ---------------------------------------------------------------------------
+# `TD-49` — "mọi route đều hỏng" phải nói được VÌ SAO, theo kiểu
+# ---------------------------------------------------------------------------
+
+
+class TestAllRoutesFailed:
+    def test_moi_nha_deu_4xx_thi_permanent_va_cause_la_route_cuoi(self) -> None:
+        """⭐⭐ Chính `TD-49`: "request của mình sai ở cả hai nhà" phải đọc được
+        bằng mã, không chỉ bằng mắt trong log. Người gọi thấy `permanent=True`
+        thì thôi thử lại — thử lại một 4xx là trả tiền cho cùng một lỗi."""
+        loi_cuoi = PermanentLLMError("prompt vượt trần context")
+        router = _router(
+            FakeProvider(error=PermanentLLMError("json_mode không hỗ trợ")),
+            FakeProvider(error=loi_cuoi),
+        )
+        with pytest.raises(AllRoutesFailed) as exc_info:
+            router.complete(MESSAGES)
+        assert exc_info.value.permanent, "hai nhà cùng từ chối request = lỗi của mình"
+        assert exc_info.value.__cause__ is loi_cuoi, "traceback phải chỉ vào lần thử sau chót"
+        assert len(exc_info.value.failures) == 2
+
+    def test_mot_nha_sap_thi_KHONG_permanent(self) -> None:
+        router = _router(
+            FakeProvider(error=PermanentLLMError("400 của mình")),
+            FakeProvider(error=LLMError("HTTP 503")),
+        )
+        with pytest.raises(AllRoutesFailed) as exc_info:
+            router.complete(MESSAGES)
+        assert not exc_info.value.permanent, "một nhà sập nghĩa là thử lại vẫn có nghĩa"
+
+    def test_route_bi_cau_dao_bo_qua_thi_KHONG_ket_luan_permanent(self) -> None:
+        """⚠️ Route bị cầu dao bỏ qua là route CHƯA ĐƯỢC HỎI — không có bằng
+        chứng nó cũng sẽ từ chối. Thiếu vế này, một cầu dao đang mở biến một
+        4xx lẻ ở route còn lại thành "request sai ở mọi nhà", và người gọi
+        thôi thử lại đúng lúc nên thử."""
+        hong = FakeProvider(error=LLMError("HTTP 500"))
+        tu_choi = FakeProvider(error=PermanentLLMError("400 của mình"))
+        router = _router(hong, tu_choi, failure_threshold=1, cooldown_s=3600.0)
+        with pytest.raises(AllRoutesFailed):
+            router.complete(MESSAGES)  # mở mạch route đầu
+        with pytest.raises(AllRoutesFailed) as exc_info:
+            router.complete(MESSAGES)  # lượt này route đầu bị bỏ qua
+        assert exc_info.value.skipped == 1
+        assert not exc_info.value.permanent
+
+    def test_astream_cung_mang_du_loi_theo_kieu(self) -> None:
+        """Hai đường ném — `complete` và `astream` — phải cùng một hợp đồng;
+        một người gọi streaming không được nhận ít thông tin hơn."""
+        router = _router(
+            FakeProvider(error=PermanentLLMError("400 a")),
+            FakeProvider(error=PermanentLLMError("400 b")),
+        )
+        with pytest.raises(AllRoutesFailed) as exc_info:
+            _drain(router)
+        assert exc_info.value.permanent
+        assert len(exc_info.value.failures) == 2
+
+    def test_van_la_LLMError_nen_moi_except_cu_con_bat_duoc(self) -> None:
+        """Tương thích lùi là một hợp đồng, không phải một sự tình cờ: mọi
+        `except LLMError` đang tồn tại phải tiếp tục bắt được lỗi gộp này."""
+        router = _router(FakeProvider(error=LLMError("HTTP 500")))
+        with pytest.raises(LLMError):
+            router.complete(MESSAGES)

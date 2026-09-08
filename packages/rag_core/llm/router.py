@@ -68,6 +68,42 @@ from .base import ChatMessage, LLMChunk, LLMError, LLMProvider, LLMResponse, Str
 from .budget import BudgetExceeded, CostBudget
 from .openai_compat import PermanentLLMError
 
+
+class AllRoutesFailed(LLMError):
+    """Mọi route đều không phục vụ được — và mang theo TỪNG lỗi, theo kiểu. `TD-49`.
+
+    Một `LLMError` phẳng làm người gọi bằng mã không phân biệt được *"cả hai
+    nhà đều sập"* (thử lại có nghĩa) với *"request của mình sai ở cả hai nhà"*
+    (thử lại vô ích). Dòng log từng route vẫn ghi đúng phân loại — nhưng log là
+    cho người vận hành; **kiểu** là cho người gọi. `__cause__` là lỗi của route
+    cuối cùng, nên traceback mặc định đã chỉ thẳng vào lần thử sau chót.
+    """
+
+    def __init__(
+        self, message: str, *, failures: Sequence[BaseException] = (), skipped: int = 0
+    ) -> None:
+        super().__init__(message)
+        self.failures = list(failures)
+        """Lỗi của từng route ĐÃ ĐƯỢC HỎI, đúng thứ tự thử."""
+        self.skipped = skipped
+        """Số route bị cầu dao bỏ qua — chưa được hỏi, không phải đã từ chối."""
+
+    @property
+    def permanent(self) -> bool:
+        """`True` = request của MÌNH bị mọi nhà từ chối — thử lại vô ích.
+
+        ⚠️ Một route bị cầu dao bỏ qua là một route **chưa được hỏi**: không có
+        bằng chứng nó cũng sẽ từ chối, nên `skipped > 0` ⇒ `False`. Thiếu vế
+        này thì một cầu dao đang mở biến một 4xx lẻ ở route còn lại thành
+        "request sai ở mọi nhà" — và người gọi sẽ thôi thử lại đúng lúc nên thử.
+        """
+        return (
+            self.skipped == 0
+            and bool(self.failures)
+            and all(isinstance(f, PermanentLLMError) for f in self.failures)
+        )
+
+
 __all__ = [
     "CircuitBreaker",
     "CircuitState",
@@ -323,9 +359,12 @@ class LLMRouter(LLMProvider):
         extra_body: Mapping[str, Any] | None = None,
     ) -> LLMResponse:
         problems: list[str] = []
+        failures: list[BaseException] = []
+        skipped = 0
         for route in self.routes:
             if not route.breaker.allow():
                 problems.append(f"{route.label}: cầu dao {route.breaker.state}")
+                skipped += 1
                 continue
             outcome: Outcome = "failure"
             try:
@@ -345,9 +384,11 @@ class LLMRouter(LLMProvider):
             except PermanentLLMError as exc:
                 outcome = "neutral"
                 problems.append(f"{route.label}: {exc}")
+                failures.append(exc)
                 logger.warning("route %s từ chối request (lỗi của mình): %s", route.label, exc)
             except Exception as exc:
                 problems.append(f"{route.label}: {exc}")
+                failures.append(exc)
                 logger.warning("route %s hỏng: %s", route.label, exc)
             else:
                 outcome = "success"
@@ -356,7 +397,9 @@ class LLMRouter(LLMProvider):
                 return response
             finally:
                 route.breaker.record(outcome)
-        raise LLMError(self._all_failed(problems))
+        raise AllRoutesFailed(self._all_failed(problems), failures=failures, skipped=skipped) from (
+            failures[-1] if failures else None
+        )
 
     # ------------------------------------------------------------------ stream
 
@@ -368,6 +411,8 @@ class LLMRouter(LLMProvider):
         max_tokens: int | None = None,
         extra_body: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[LLMChunk]:
+        failures: list[BaseException] = []
+        skipped = 0
         """Xem §"Chuyển nhà cung cấp GIỮA STREAM" ở docstring module."""
         problems: list[str] = []
         for route in self.routes:
@@ -377,6 +422,7 @@ class LLMRouter(LLMProvider):
                 continue
             if not route.breaker.allow():
                 problems.append(f"{route.label}: cầu dao {route.breaker.state}")
+                skipped += 1
                 continue
 
             outcome: Outcome = "failure"
@@ -425,6 +471,7 @@ class LLMRouter(LLMProvider):
                         "nối hai câu trả lời khác nhau tạo ra một đoạn văn không ai nói."
                     ) from exc
                 problems.append(f"{route.label}: {exc}")
+                failures.append(exc)
                 logger.warning("route %s hỏng trước token đầu: %s", route.label, exc)
             else:
                 outcome = "success"
@@ -437,7 +484,9 @@ class LLMRouter(LLMProvider):
                     # request sẽ **không bao giờ** chạm trần nếu ghi 0.
                     self._charge(reserved)
                 route.breaker.record(outcome)
-        raise LLMError(self._all_failed(problems))
+        raise AllRoutesFailed(self._all_failed(problems), failures=failures, skipped=skipped) from (
+            failures[-1] if failures else None
+        )
 
     # ------------------------------------------------------------------- phụ
 

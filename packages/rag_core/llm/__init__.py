@@ -19,7 +19,7 @@ from .base import (
 )
 from .budget import BudgetExceeded, CostBudget
 from .openai_compat import OpenAICompatProvider, PermanentLLMError
-from .router import CircuitBreaker, CircuitState, DailyBudget, LLMRouter, Route
+from .router import AllRoutesFailed, CircuitBreaker, CircuitState, DailyBudget, LLMRouter, Route
 from .tokenizer import HFTokenCounter
 
 __all__ = [
@@ -30,6 +30,7 @@ __all__ = [
     "GLM_BASE_URL",
     "GLM_PRICING",
     "MIN_REASONING",
+    "AllRoutesFailed",
     "BudgetExceeded",
     "ChatMessage",
     "CircuitBreaker",
