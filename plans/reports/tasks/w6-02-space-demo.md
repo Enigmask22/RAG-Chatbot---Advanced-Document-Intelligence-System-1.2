@@ -415,7 +415,95 @@ nhưng ghi lại để lần sau không phải phát hiện lại.
 
 ---
 
-## 12. Việc sinh ra từ lượt này
+## 12. ⭐⭐ Đo trên chính Space — và `TD-72` có một tầng thứ ba
+
+*bổ sung 08/09/2026, sau khi Space chạy thật · 3 câu hỏi · chi phí **$0,003531***
+
+Space `johnenigmask12/rag-platform-demo` **RUNNING** trên `zero-a10g`, bundle
+`0.2.1`. Ba câu hỏi thật qua `gradio_client`, mọi trích dẫn **xác minh được**,
+guard đếm đúng 1 → 2 → 3 trên 500.
+
+### Khởi động: app nhanh hơn laptop, nhưng người dùng chờ lâu hơn
+
+App **tự khai** phân rã khởi động trong log — thứ được thiết kế để không phải
+đoán:
+
+```
+space khoi dong xong: {'bundle': '0.2.1', 'mo_index_s': 4.7, 'kich_hoat_s': 12.88,
+ 'nap_trong_so_s': 5.36, 'tong_khoi_dong_s': 22.94,
+ 'trong_so_da_nap': {'embedder': True, 'reranker': True}, 'co_khoa_sinh': True}
+```
+
+| mốc | thời điểm |
+|---|---|
+| dòng log đầu (container khởi động) | `03:08:11` |
+| bundle được kích hoạt | `03:08:50` |
+| `space khoi dong xong` (**22,94 s** phần app) | `03:08:55` |
+| Gradio phục vụ URL | `03:09:00` |
+| **tổng đồng hồ tường** | **49 s** |
+
+⭐ **Phần app trên Space (22,94 s) NHANH HƠN laptop (28,1 s)** — nghịch với dự
+đoán. Phần chênh 26 s còn lại là container + import Python + Gradio SSR boot,
+tức **thứ tôi không điều khiển được**, và nó lớn hơn phần tôi điều khiển được.
+
+✅ **Hai cờ mà `W6-02` sinh ra để không hỏng âm thầm đều tự khai trong log thật**:
+`trong_so_da_nap: {embedder: True, reranker: True}` — bản vá `__getattr__` cho
+`ZeroGpuRetriever` hoạt động **trên nền tảng thật**, không chỉ trong unit test;
+và `co_khoa_sinh: True` — secret đã có.
+
+### ⭐⭐ Server đo 3,8 s, người dùng chờ 13,2 s
+
+| câu | đồng hồ tường | `prepare` | tổng **server tự đo** | chi phí |
+|---|---:|---:|---:|---:|
+| 1 (worker ZeroGPU lạnh) | **13,16 s** | 3.483,7 ms | 3.799,5 ms | $0,001203 |
+| 2 | **9,53 s** | 2.857,6 ms | 3.601,7 ms | $0,001332 |
+| 3 | **5,03 s** | 1.299,7 ms | 2.701,3 ms | $0,000996 |
+
+Câu đầu: hệ thống **tự báo 3,8 s** trong khi người hỏi chờ **13,2 s**. Chênh
+**3,5×**, và toàn bộ nằm **ngoài tầm quan sát của hệ thống**.
+
+Cùng họ với phát hiện `W5-06` (*"truy hồi 725 ms hoá ra 44,8 ms tìm + 685,3 ms
+xếp lại"*) nhưng **ngược chiều**: lần đó thứ không thấy nằm *bên trong* một con
+số đã đo; lần này nó nằm **ngoài tiến trình** — không span nào, không metric
+nào, không dòng log nào của ta chạm tới được.
+
+### ⭐⭐ `TD-72` có tầng thứ ba, và `materialise_weights` không xoá được nó
+
+`TD-72` đã đi qua hai tầng: rerank lạnh (`W6-05`, vá ở `activate`) và nạp trọng
+số ở module scope (`W6-02`, vá bằng `materialise_weights`). Log chứng minh tầng
+hai **hoạt động**: `nap_trong_so_s: 5.36`, cả hai `True`.
+
+Nhưng câu đầu vẫn tốn thêm ~9,4 s. Lý do là cơ chế của nền tảng: ZeroGPU **pack
+trọng số xuống đĩa** lúc khởi động rồi stream **đĩa → VRAM** ở lời gọi
+`@spaces.GPU` đầu tiên của một worker mới. Không lời gọi nào ở module scope xoá
+được nó, **vì worker chưa tồn tại lúc đó**.
+
+⚠️ Nên phần "làm nóng" trên ZeroGPU **không đóng được từ phía ứng dụng**. Nó
+tính vào hạn mức của người dùng đầu tiên sau mỗi lần worker bị thu hồi. Ghi lại
+thay vì vá: một bản vá cho thứ này sẽ phải là một lời gọi GPU giả định kỳ, tức
+**đốt hạn mức để tránh đốt hạn mức**.
+
+### `G6` — đạt khi Space thức, KHÔNG đạt ở lượt đánh thức
+
+* **Space đang thức:** ~**5 s** đầu-cuối ⇒ *"hỏi được ngay < 30 s"* **đạt**, dư 6×.
+* **Space vừa ngủ dậy:** 49 s khởi động **một mình đã vượt ngân sách 30 s**,
+  trước khi ai kịp gõ chữ nào. `sleep_time = 172.800 s = 48 giờ`.
+
+Tức câu gate đúng hay sai **phụ thuộc vào việc có ai ghé trong 48 giờ trước
+đó** — một tính chất của *lưu lượng*, không của hệ thống. Cùng hình dạng với
+`TD-56` (*"clone sạch ≤ 5 phút"* chỉ đúng khi cache ấm) và với chuyện
+`W6-07`/`W6-08` bỏ *"80–90% cache hit rate"*: một con số nghe như thuộc về hệ
+thống nhưng thật ra thuộc về người dùng.
+
+### ⚠️ Vẫn chưa đóng được `W6-02`
+
+`private = True`; `GET https://johnenigmask12-rag-platform-demo.hf.space/` ẩn
+danh trả **404**. DoD đòi *"link public"*, nên hạng mục ở `[~]`. Mọi thứ khác
+đã đo và đã chạy — còn đúng **một cái công tắc** trong Settings.
+
+---
+
+## 13. Việc sinh ra từ lượt này
 
 * `TD-87` — Space chạy Python/torch khác môi trường eval, và `retriever_name`
   không mã hoá điều đó.
