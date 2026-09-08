@@ -119,11 +119,31 @@ class TestRobustness:
         assert not offenders, f"rag_core không được dùng pickle: {offenders}"
 
     def test_ttl_expires_entry(self, tmp_path: Path, sample_chunks: list[Chunk]) -> None:
-        cache = SQLiteChunkCache(tmp_path / "c.sqlite3", ttl_seconds=0.05)
+        """⚠️ Bản cũ đỏ trên CI ở `ca457c1` — một commit **chỉ đụng hai file
+        `.md`**. Nó dùng `ttl=0,05 s` rồi khẳng định entry vừa ghi **còn sống**:
+        runner khựng 50 ms giữa `put` và `get` là đủ để entry hết hạn, và bài
+        test đỏ vì môi trường chứ không vì mã.
+
+        Không nới `sleep` — mọi cặp số cố định vẫn để lại đúng cửa sổ ấy, chỉ
+        hẹp hơn. Cầm lấy đồng hồ thì cửa sổ **biến mất**, và bài test nhanh hơn
+        130 ms."""
+        now = 1_000.0
+        cache = SQLiteChunkCache(tmp_path / "c.sqlite3", ttl_seconds=60.0, clock=lambda: now)
         cache.put("h1", "c1", "fixed", sample_chunks)
         assert cache.get("h1", "c1", "fixed") is not None
-        time.sleep(0.08)
+        now += 60.001
         assert cache.get("h1", "c1", "fixed") is None
+
+    def test_ttl_KHONG_het_han_ngay_truoc_moc(
+        self, tmp_path: Path, sample_chunks: list[Chunk]
+    ) -> None:
+        """Nhóm chứng: bài trên xanh vì TTL **hết hạn**, hay vì `get` luôn trả
+        `None` sau lần đầu? Nhảy tới sát mốc rồi đòi entry còn sống."""
+        now = 1_000.0
+        cache = SQLiteChunkCache(tmp_path / "c.sqlite3", ttl_seconds=60.0, clock=lambda: now)
+        cache.put("h1", "c1", "fixed", sample_chunks)
+        now += 59.999
+        assert cache.get("h1", "c1", "fixed") is not None
 
     def test_lru_eviction(self, tmp_path: Path, sample_chunks: list[Chunk]) -> None:
         cache = SQLiteChunkCache(tmp_path / "c.sqlite3", max_entries=2)

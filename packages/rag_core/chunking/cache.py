@@ -22,7 +22,7 @@ import json
 import logging
 import sqlite3
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -96,10 +96,23 @@ class SQLiteChunkCache:
         *,
         ttl_seconds: float | None = None,
         max_entries: int = 20_000,
+        clock: Callable[[], float] = time.time,
     ) -> None:
+        """⚠️ `clock` là một mối nối, không phải một tuỳ chọn cấu hình.
+
+        `ttl_seconds` đo theo **giờ tường**, nên mọi phép kiểm TTL viết bằng
+        `sleep()` đều là một cuộc đua với chính máy chạy nó: bài
+        `test_ttl_expires_entry` dùng `ttl=0,05 s` rồi khẳng định entry vừa ghi
+        **còn sống** — trên runner CI khựng 50 ms giữa `put` và `get` thì nó đã
+        hết hạn, và bài test đỏ vì môi trường chứ không vì mã. Đã xảy ra thật
+        (`ca457c1`, 08/09/2026, trên một commit **chỉ đụng hai file `.md`**).
+
+        Tham số này để test cầm lấy đồng hồ. Production không truyền gì.
+        """
         self.path = Path(path)
         self.ttl_seconds = ttl_seconds
         self.max_entries = max_entries
+        self._clock = clock
         self.hits = 0
         self.misses = 0
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -145,7 +158,7 @@ class SQLiteChunkCache:
                 return None
 
             payload, created_at = row
-            if self.ttl_seconds is not None and time.time() - created_at > self.ttl_seconds:
+            if self.ttl_seconds is not None and self._clock() - created_at > self.ttl_seconds:
                 conn.execute(
                     f"DELETE FROM {CACHE_TABLE} "
                     "WHERE content_hash=? AND config_hash=? AND chunker_name=?",
@@ -170,7 +183,7 @@ class SQLiteChunkCache:
             conn.execute(
                 f"UPDATE {CACHE_TABLE} SET last_used_at=?, hit_count=hit_count+1 "
                 "WHERE content_hash=? AND config_hash=? AND chunker_name=?",
-                (time.time(), content_hash, config_hash, chunker_name),
+                (self._clock(), content_hash, config_hash, chunker_name),
             )
             self.hits += 1
             return chunks
@@ -183,7 +196,7 @@ class SQLiteChunkCache:
         chunks: Sequence[Chunk],
     ) -> None:
         payload = _CHUNK_LIST.dump_json(list(chunks)).decode("utf-8")
-        now = time.time()
+        now = self._clock()
         with self._connect() as conn:
             conn.execute(
                 f"INSERT OR REPLACE INTO {CACHE_TABLE} "

@@ -659,6 +659,7 @@ import numpy as np  # noqa: E402
 
 from serving.core.chat import cache_eligible, cache_namespace  # noqa: E402
 from serving.core.semantic_cache import CachedAnswer  # noqa: E402
+from serving.core.single_flight import SingleFlight, flight_key  # noqa: E402
 
 
 class RecordingCache:
@@ -1177,3 +1178,302 @@ async def test_the_cache_is_stored_under_the_top_k_that_produced_the_answer() ->
     await asyncio.sleep(0)
 
     assert cache.stored[0]["bundle"] == "0.2.0+chat-system@v2+k20+gfake-model+e"
+
+
+# ---------------------------------------------------------------------------
+# `NEW-10` — vé single-flight phải được giải phóng trên CẢ BA đường thoát
+# ---------------------------------------------------------------------------
+#
+# Bộ test ở `test_single_flight.py` chứng minh **cơ chế**. Ba bài dưới đây
+# chứng minh **dây nối** — và dây nối mới là chỗ hỏng được: `resolve()` sống
+# trong `finally` của `stream_turn`, nên câu hỏi thật không phải "future có
+# resolve không" mà là "`finally` ấy có chạy khi request chết giữa chừng
+# không". Một follower bị bỏ quên không đỏ ở đâu cả; nó chỉ chờ 15 giây.
+
+
+def _leader_turn(sf: SingleFlight, **kwargs: Any) -> ChatTurn:
+    return _turn(flight=sf.join("k"), cache_vector=np.ones(4, dtype=np.float32), **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_a_leader_that_finishes_hands_its_answer_to_the_follower() -> None:
+    sf = SingleFlight()
+    service = _service(FakeLLM(deltas=("Đáp án.",)))
+    service.cache = RecordingCache()  # type: ignore[assignment]
+    service.single_flight = sf
+
+    turn = _leader_turn(sf)
+    follower = sf.join("k")
+    await _drain(service, turn)
+
+    got = await follower.wait()
+    assert got is not None
+    assert got.text == "Đáp án."
+    assert got.similarity == 1.0, "khớp nguyên văn, không phải khớp cosine"
+
+
+@pytest.mark.asyncio
+async def test_a_leader_that_blows_up_releases_the_follower_instead_of_hanging_it() -> None:
+    """⭐⭐ Bài quan trọng nhất của hạng mục. Không có `resolve()` trong
+    `finally`, một lỗi nhà cung cấp 200 ms biến thành **15 giây** cho mọi người
+    đứng sau — cơ chế tiết kiệm tiền tự biến thành cơ chế sinh độ trễ."""
+    sf = SingleFlight(wait_s=30.0)  # đủ dài để "treo" là treo thật, không phải quá hạn
+    service = _service(BrokeLLM())
+    service.cache = RecordingCache()  # type: ignore[assignment]
+    service.single_flight = sf
+
+    turn = _leader_turn(sf)
+    follower = sf.join("k")
+    await _drain(service, turn)
+
+    assert await asyncio.wait_for(follower.wait(), 1.0) is None
+
+
+@pytest.mark.asyncio
+async def test_a_client_that_disconnects_mid_stream_still_releases_the_follower() -> None:
+    """Đường thoát thứ ba: huỷ. `finally` của `stream_turn` chạy trên cả ba, và
+    `resolve()` đồng bộ đúng vì lý do ấy — một `await` trong lúc bị huỷ không
+    chạy tới nơi."""
+    sf = SingleFlight(wait_s=30.0)
+    service = _service(FakeLLM(deltas=("một", "hai", "ba")))
+    service.cache = RecordingCache()  # type: ignore[assignment]
+    service.single_flight = sf
+
+    turn = _leader_turn(sf)
+    follower = sf.join("k")
+    stream = service.stream_turn(turn)
+    await stream.__anext__()  # nhận `meta` rồi bỏ đi
+    await stream.aclose()
+
+    assert await asyncio.wait_for(follower.wait(), 1.0) is None
+
+
+@pytest.mark.asyncio
+async def test_a_failover_answer_is_NOT_handed_to_followers() -> None:
+    """Cùng điều kiện loại với đầu ghi cache (`W5-11`), và **cùng một khối `if`**
+    — không phải một bản sao. Chia câu trả lời của nhà cung cấp dự phòng dưới
+    danh nghĩa nhánh chính là đúng thứ khoá cache bốn trục sinh ra để chặn."""
+    sf = SingleFlight()
+    service = _service(FakeLLM(deltas=("Đáp án.",)))
+    service.cache = RecordingCache()  # type: ignore[assignment]
+    service.single_flight = sf
+    service.generator = "khac-han-model-da-phuc-vu"
+
+    turn = _leader_turn(sf)
+    follower = sf.join("k")
+    await _drain(service, turn)
+
+    assert await follower.wait() is None
+
+
+@pytest.mark.asyncio
+async def test_a_prepare_that_blows_up_after_taking_the_ticket_does_not_poison_the_key() -> None:
+    """⭐⭐ Chế độ hỏng tệ nhất của `NEW-10`, và nó **không** nằm ở `stream_turn`.
+
+    Vé được nhận trong `_prepare`, nhưng chỗ giải phóng nằm ở `stream_turn`.
+    Nếu truy hồi ném lỗi ở giữa, `ChatTurn` không bao giờ ra đời ⇒ không ai gọi
+    `resolve()` ⇒ future nằm lại trong sổ **và không bao giờ xong**. Từ giây ấy
+    mọi lượt hỏi cùng câu đều thành follower và đều chờ hết hạn giờ: khoá bị
+    **đầu độc vĩnh viễn**, không chỉ chậm một lần.
+
+    Phép tiêm `M14` (bỏ `except BaseException: flight.resolve(None)`) **sống
+    sót** ở lượt chấm đầu — không bài nào nhìn tới đường này.
+    """
+
+    class _No(Exception):
+        pass
+
+    class _Embedder:
+        name = "gia-lap"
+
+        def embed_query(self, text: str) -> Any:
+            return np.ones(4, dtype=np.float32)
+
+    class _Store:
+        embeddings = _Embedder()
+
+    class _Retriever:
+        store = _Store()
+        name = "gia-lap"
+
+        def retrieve(self, *a: Any, **k: Any) -> Any:
+            raise _No("Qdrant chết giữa chừng")
+
+    class _Snapshot:
+        version = "0.2.0"
+        retriever = _Retriever()
+
+    class _Registry:
+        active = _Snapshot()
+
+    class _MissCache:
+        async def lookup(self, *a: Any, **k: Any) -> None:
+            return None
+
+    sf = SingleFlight(wait_s=30.0)
+    service = _service(FakeLLM(deltas=("x",)))
+    service.registry = _Registry()  # type: ignore[assignment]
+    service.cache = _MissCache()  # type: ignore[assignment]
+    service.single_flight = sf
+
+    with pytest.raises(_No):
+        await service.prepare(PRINCIPAL, question="RRF là gì?", conversation_id=None)
+
+    assert sf.inflight == 0, "vé phải được trả lại sổ"
+    # Nhóm chứng: khoá còn dùng được, và người tới sau là LEADER chứ không phải
+    # một follower chờ mòn mỏi trên xác của lượt trước.
+    assert sf.join(flight_key(PRINCIPAL.tenant_id, "bất kỳ", "RRF là gì?")).is_leader
+
+
+class _CountingRetriever:
+    store: Any
+    name = "gia-lap"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def retrieve(self, *a: Any, **k: Any) -> list[RetrievedChunk]:
+        self.calls += 1
+        return [_hit(1, "RRF là reciprocal rank fusion.")]
+
+
+def _flight_service(sf: SingleFlight) -> tuple[CapturingService, _CountingRetriever]:
+    class _Embedder:
+        name = "gia-lap"
+
+        def embed_query(self, text: str) -> Any:
+            return np.ones(4, dtype=np.float32)
+
+    class _Store:
+        embeddings = _Embedder()
+
+    retriever = _CountingRetriever()
+    retriever.store = _Store()
+
+    class _Snapshot:
+        version = "0.2.0"
+
+    snapshot = _Snapshot()
+    snapshot.retriever = retriever  # type: ignore[attr-defined]
+
+    class _Registry:
+        active = snapshot
+
+    class _MissCache:
+        async def lookup(self, *a: Any, **k: Any) -> None:
+            return None
+
+    service = _service(FakeLLM(deltas=("Đáp án.",)))
+    service.registry = _Registry()  # type: ignore[assignment]
+    service.cache = _MissCache()  # type: ignore[assignment]
+    service.single_flight = sf
+    return service, retriever
+
+
+@pytest.mark.asyncio
+async def test_the_second_concurrent_request_follows_instead_of_retrieving_again() -> None:
+    """⭐⭐ Đây là mệnh đề trung tâm của `NEW-10`, và tới lượt chấm thứ hai nó
+    vẫn **chưa có bài test nào**: phép tiêm `M15` (`if ticket.is_leader:` →
+    `if True:`, tức ai cũng thành leader) **sống sót** vì mọi bài trước đó dựng
+    vé bằng tay thay vì đi qua `_prepare`.
+
+    Bài này đo thứ `AU-11` đã đo trên hệ thật: **số lượt truy hồi**. Một cơ chế
+    gộp không chứng minh được bằng "future resolve đúng" — nó chỉ đúng khi phần
+    đắt tiền **không chạy lần thứ hai**.
+    """
+    sf = SingleFlight(wait_s=30.0)
+    service, retriever = _flight_service(sf)
+
+    turn1 = await service.prepare(PRINCIPAL, question="RRF là gì?", conversation_id=None)
+    assert turn1.flight is not None and turn1.flight.is_leader
+    assert retriever.calls == 1
+
+    task2 = asyncio.create_task(
+        service.prepare(PRINCIPAL, question="RRF là gì?", conversation_id=None)
+    )
+    # ⚠️ **Chờ đúng điều kiện, không chờ một nhịp.** Bản đầu dùng
+    # `await asyncio.sleep(0)` và bài test đỏ với `calls == 2`: đường tới
+    # `join()` đi qua `asyncio.to_thread` (embed câu hỏi), nên một nhịp vòng lặp
+    # không đủ để task thứ hai kịp ghi sổ — nó join **sau** khi leader đã
+    # resolve, thành leader mới, và truy hồi lần nữa. Một bài test đo đồng thời
+    # mà đồng bộ bằng `sleep` là một bài test đo chính bộ lập lịch.
+    for _ in range(500):
+        if sf.stats()["followed"] == 1:
+            break
+        await asyncio.sleep(0.01)
+    assert sf.stats()["followed"] == 1, "task thứ hai chưa kịp vào sổ"
+    turn1.flight.resolve(
+        CachedAnswer(
+            question="RRF là gì?",
+            text="Đáp án.",
+            sources=[],
+            citations_frame=None,
+            model="fake-model",
+            similarity=1.0,
+        )
+    )
+    turn2 = await task2
+
+    assert retriever.calls == 1, "người theo sau KHÔNG được truy hồi lần nữa"
+    assert turn2.cached is not None and turn2.cached.text == "Đáp án."
+    assert turn2.flight is None, "follower không giữ vé — nó không có gì để giải phóng"
+    assert sf.stats()["served"] == 1
+
+
+@pytest.mark.asyncio
+async def test_two_DIFFERENT_questions_are_not_merged() -> None:
+    """Nhóm chứng cho bài trên. Nếu gộp theo khoá quá rộng thì bài trên vẫn
+    xanh trong khi hệ thống đang trả lời sai người — và đó là chế độ hỏng duy
+    nhất của `NEW-10` mà người dùng nhìn thấy."""
+    sf = SingleFlight(wait_s=30.0)
+    service, retriever = _flight_service(sf)
+
+    await service.prepare(PRINCIPAL, question="Tỉ lệ nghèo 1993?", conversation_id=None)
+    await service.prepare(PRINCIPAL, question="Tỉ lệ nghèo 1998?", conversation_id=None)
+
+    assert retriever.calls == 2
+    assert sf.stats()["led"] == 2 and sf.stats()["followed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_the_same_question_at_a_different_top_k_is_NOT_merged() -> None:
+    """⭐⭐ `AU-02` ở trục thứ ba. Phép tiêm `M17` (khoá gộp bỏ `cache_namespace`,
+    chỉ còn tenant + câu hỏi) **sống sót** tới lượt chấm thứ ba: mọi bài trước
+    đều hỏi cùng một câu ở cùng một cấu hình.
+
+    Hai request cùng chữ nhưng khác `top_k` là **hai câu hỏi khác nhau** — cùng
+    luật đã bắt đầu ghi cache phải mang `+k20` (`NEW-08`). Gộp chúng là trả câu
+    trả lời dựng trên 5 nguồn cho người đã xin 20.
+    """
+    sf = SingleFlight(wait_s=30.0)
+    service, retriever = _flight_service(sf)
+
+    await service.prepare(PRINCIPAL, question="RRF là gì?", conversation_id=None, top_k=5)
+    await service.prepare(PRINCIPAL, question="RRF là gì?", conversation_id=None, top_k=20)
+
+    assert retriever.calls == 2
+    assert sf.stats()["followed"] == 0, "khác top_k thì không được dùng chung một lượt sinh"
+
+
+@pytest.mark.asyncio
+async def test_a_single_flight_follower_is_not_counted_as_a_cache_hit() -> None:
+    """⭐ Người theo sau đi qua **cùng** nhánh phát lại của `W4-10`, nên span
+    `cache.replay` — thứ `MetricsSink` dùng để đếm *"phục vụ mà không gọi
+    provider"* — sẽ quy công của single-flight cho semantic cache nếu không
+    tách nhãn. Con số không sai; **cái tên** nói dối về cơ chế, và bảng RAG
+    Health sẽ báo tỉ lệ trúng cache tăng vọt sau một bản vá không đụng cache.
+    """
+    turn = _cached_turn(cached_from_flight=True)
+    await _drain(_service(FakeLLM()), turn)
+
+    spans = {s.name: s.metadata for s in turn.trace.spans}
+    assert spans["cache.replay"]["via"] == "single_flight"
+
+
+@pytest.mark.asyncio
+async def test_a_real_cache_hit_is_still_labelled_cache() -> None:
+    """Nhóm chứng: nhãn phải **phân biệt** được, không phải luôn nói một thứ."""
+    turn = _cached_turn()
+    await _drain(_service(FakeLLM()), turn)
+    spans = {s.name: s.metadata for s in turn.trace.spans}
+    assert spans["cache.replay"]["via"] == "cache"

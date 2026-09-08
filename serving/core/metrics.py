@@ -383,7 +383,15 @@ class MetricsSink:
             # Một lượt phát lại từ cache **không** đi qua `cache.lookup` với
             # `hit=True` ở lượt này — nó đi qua đó ở lượt trước. Đếm riêng, nếu
             # không thì tỉ lệ trúng cache đếm thiếu đúng phần nó phục vụ.
-            m.cache_lookups.labels(result="replay").inc()
+            #
+            # ⭐ `NEW-10` chia nhãn ấy làm hai. Người theo sau single-flight đi
+            # qua **cùng** nhánh phát lại, nên trước khi tách thì một bản vá
+            # không đụng gì tới cache sẽ làm tỉ lệ trúng cache tăng vọt trên
+            # bảng. Hai cơ chế khác nhau, hai nhãn khác nhau — nhãn phải nói
+            # đúng **cơ chế**, không chỉ đúng kết quả.
+            m.cache_lookups.labels(
+                result="single_flight" if meta.get("via") == "single_flight" else "replay"
+            ).inc()
         elif name in {"retrieval", "retrieve"}:
             # Chỉ span **ngoài cùng** của chuỗi. `retrieve.hybrid` là con
             # và mang `n_hits=50` (độ sâu pool rerank, không phải kết quả),

@@ -61,6 +61,7 @@ from serving.core.probes import Check, ReadinessProbes
 from serving.core.ratelimit import RateLimiter
 from serving.core.registry import BundleRegistry, RuntimeBuilder
 from serving.core.runtime import QdrantRuntimeBuilder
+from serving.core.single_flight import SingleFlight
 from serving.core.tracing import FanoutSink, TraceSink
 from serving.core.understanding import QueryUnderstanding
 
@@ -518,6 +519,13 @@ def create_app(
         # cung cấp mình, và một giá trị ở đây sẽ ghi đè bảng ấy cho MỌI nhánh.
         understanding=build_understanding(resolved, llm),
         cache=build_cache(resolved),
+        # ⚠️ Gắn với `chat_cache`: `_prepare` chỉ vào đường gộp bên trong nhánh
+        # cache, nên bật single-flight khi cache tắt là một object không ai gọi.
+        single_flight=(
+            SingleFlight(wait_s=resolved.chat_single_flight_wait_s)
+            if resolved.chat_single_flight and resolved.chat_cache
+            else None
+        ),
         sink=trace_sink,
     )
     # ⚠️ **Thứ tự quan trọng và nó ngược trực giác.** `add_middleware` *chèn lên

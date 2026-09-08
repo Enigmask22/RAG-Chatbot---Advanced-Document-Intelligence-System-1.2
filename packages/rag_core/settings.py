@@ -179,6 +179,18 @@ class Settings(BaseSettings):
     chat_cache_ttl_s: int = Field(default=86_400, ge=1)
     chat_cache_max_entries: int = Field(default=128, ge=1)
 
+    # `NEW-10` — gộp request TRÙNG NHAU đang bay. `AU-11` đo: 8 câu giống hệt
+    # gửi đồng thời ⇒ 8 lời gọi trả tiền, 0 cache hit.
+    chat_single_flight: bool = True
+    chat_single_flight_wait_s: float = Field(default=15.0, gt=0.0)
+    """Hạn giờ người theo sau chờ leader. Lớn hơn p99 end-to-end (`exp-003`:
+    11.142 ms) một biên.
+
+    ⚠️ Đây **không** phải một van an toàn rẻ tiền: quá hạn nghĩa là follower đã
+    tiêu ngần này giây **rồi mới** bắt đầu tự làm. Nó là hàng rào cho ca leader
+    biến mất mà không chạy `finally` (tiến trình bị giết) — ca duy nhất mà
+    đường `resolve()` không phủ."""
+
     # ------------------------------------------------------- LLM Router (W4-08)
     chat_fallback_provider: Literal["openrouter", "glm", "none"] = "none"
     """Nhánh dự phòng khi nhà cung cấp chính hỏng. `none` = chỉ một nhánh.

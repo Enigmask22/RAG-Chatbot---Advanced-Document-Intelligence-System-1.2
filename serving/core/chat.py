@@ -56,6 +56,7 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncGenerator, Mapping, Sequence
+from contextlib import aclosing
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -79,6 +80,7 @@ from rag_core.schemas import RetrievedChunk
 from serving.core.auth import Principal, tenant_filter
 from serving.core.registry import ActiveBundle, BundleRegistry, NoBundleLoadedError
 from serving.core.semantic_cache import CachedAnswer, SemanticCache, embedder_of
+from serving.core.single_flight import Flight, SingleFlight, flight_key
 from serving.core.tracing import Trace, TraceSink, Usage, trace_scope
 from serving.core.understanding import QueryPlan, QueryUnderstanding, detect_language
 from serving.db.engine import atenant_session
@@ -344,6 +346,29 @@ class ChatTurn:
     resolved_top_k: int = 5
     """`top_k` đã chốt cho lượt này (`NEW-08`/`AU-02`) — thành phần của
     `cache_namespace`, và phải là CÙNG một giá trị ở đầu tra lẫn đầu ghi."""
+    cached_from_flight: bool = False
+    """`NEW-10`: `cached` của lượt này đến từ **single-flight**, không từ Redis.
+
+    ⚠️ Tồn tại vì một phép đo, không vì gọn gàng: probe `new10-singleflight-after`
+    cho thấy 7 người theo sau đi qua đúng nhánh phát lại của `W4-10`, nên span
+    `cache.replay` — thứ `MetricsSink` dùng để đếm *"phục vụ mà không gọi
+    provider"* — quy **cả** công của single-flight cho semantic cache. Con số
+    không sai, nhưng cái tên thì nói dối về **cơ chế**, và bảng RAG Health sẽ
+    báo tỉ lệ trúng cache tăng vọt sau một bản vá không đụng gì tới cache. Cùng
+    lý lẽ với `refusals_suspected` của `W5-07`: đặt tên đúng thứ đang đếm."""
+    shared_answer: CachedAnswer | None = None
+    """`NEW-10`: thứ leader chia cho người theo sau — đặt **bên trong** đúng
+    khối điều kiện đã cho phép ghi cache, không dựng lại bộ điều kiện ấy ở chỗ
+    giải phóng. Hai bản sao của một luật là `AU-12`, và ở đây bản sao lệch
+    nghĩa là chia câu trả lời của nhánh failover."""
+    flight: Flight | None = None
+    """`NEW-10`: vé single-flight của lượt này, và **chỉ khi lượt này là leader**.
+
+    Follower không giữ vé: nó đã `await` xong ở `_prepare` và không có gì để
+    giải phóng. Đặt vé của follower vào đây sẽ khiến `finally` của
+    `stream_turn` gọi `resolve()` trên future của **người khác** — `resolve()`
+    tự chặn bằng `is_leader`, nhưng dựa vào một phép kiểm ở xa để giữ đúng một
+    bất biến gần là cách bất biến ấy chết ở lần sửa sau."""
     nonce: str = field(default_factory=context_nonce)
     """`W4-12`: mã phiên bọc mỗi khối ngữ cảnh. MỖI LƯỢT một mã mới — một mã cố
     định là một mã cuối cùng sẽ nằm trong một tài liệu nào đó, và từ giây ấy nó
@@ -557,6 +582,14 @@ class ChatService:
     """`W4-10`. `None` = tắt. Mọi lỗi cache đều suy giảm thành miss — cache
     không bao giờ được phép là lý do `/chat` trả lỗi."""
 
+    single_flight: SingleFlight | None = None
+    """`NEW-10`. `None` = tắt (mọi request trùng nhau tự đi đường riêng, tức
+    hành vi trước 08/09/2026).
+
+    ⚠️ Phụ thuộc `cache`: khoá gộp dùng chính `cache_namespace`, và người theo
+    sau nhận một `CachedAnswer`. Bật single-flight khi `cache=None` không sai
+    nhưng vô nghĩa — `_prepare` chỉ vào đường này bên trong nhánh cache."""
+
     sink: TraceSink | None = None
     """`W5-06`. `None` = cây span vẫn được dựng nhưng không đi đâu cả. Cùng hợp
     đồng với `cache`: quan sát hỏng làm mất một trace, không làm mất một câu
@@ -716,6 +749,8 @@ class ChatService:
         cached: CachedAnswer | None = None
         cache_vector: Any | None = None
         precomputed: Any | None = None
+        flight: Flight | None = None
+        cached_from_flight = False
         resolved_top_k = top_k or self.top_k
         # ⚠️ `and self.generator` ở đây là một **hàng rào hiệu năng**, không
         # phải hàng rào đúng đắn — phép tiêm `M5` (`W5-11`) xoá nó và **sống
@@ -779,6 +814,86 @@ class ChatService:
                         hit=cached is not None,
                     )
 
+                # ⭐⭐ `NEW-10`: cache TRƯỢT không có nghĩa là "chưa ai hỏi câu
+                # này" — nó có nghĩa là "chưa ai hỏi xong". `AU-11` đo được 8
+                # request trùng nhau đi lọt qua đúng khe giữa hai câu ấy: 8 lời
+                # gọi trả tiền, 0 hit. Chỗ gộp phải nằm **ngay sau** lượt tra và
+                # **trước** truy hồi, vì phần đắt (rerank + sinh) nằm ở dưới.
+                if cached is None and self.single_flight is not None:
+                    key = flight_key(
+                        principal.tenant_id,
+                        cache_namespace(
+                            snapshot.version, resolved_top_k, self.generator, self.endpoint
+                        ),
+                        plan.question,
+                    )
+                    ticket = self.single_flight.join(key)
+                    if ticket.is_leader:
+                        flight = ticket
+                    else:
+                        with trace.span("cache.single_flight", input=plan.question) as sf:
+                            cached = await ticket.wait()
+                            sf.end(output={"joined": cached is not None}, joined=cached is not None)
+                        cached_from_flight = cached is not None
+                        # ⚠️ Follower trượt (leader hỏng / quá hạn) **không**
+                        # trở thành leader mới: nó đi đường đầy đủ và không ghi
+                        # sổ. Một đàn follower cùng tranh làm leader mới là đúng
+                        # cái thundering herd mà cơ chế này sinh ra để chặn, chỉ
+                        # dời đi một nhịp. Giá phải trả: N request đầy đủ — đúng
+                        # bằng hành vi trước `NEW-10`, không tệ hơn.
+
+        # ⚠️⚠️ Từ đây tới `return`, một ngoại lệ sẽ bỏ rơi vé: leader đã ghi
+        # sổ ở trên nhưng `stream_turn` — chỗ duy nhất gọi `resolve()` — sẽ
+        # không bao giờ chạy. Follower khi ấy chờ **hết hạn giờ 15 giây** rồi
+        # mới tự đi, tức một lỗi truy hồi 200 ms bị khuếch đại thành 15 giây
+        # cho mọi người đứng sau. Đúng chế độ hỏng mà quyết định 3 của
+        # `single_flight.py` tồn tại để chặn, chỉ ở một khúc mã khác — nên
+        # hàng rào phải đặt ở cả hai khúc, không chỉ ở khúc dễ thấy.
+        try:
+            return await self._retrieve_and_open(
+                trace=trace,
+                principal=principal,
+                conversation_id=conversation_id,
+                plan=plan,
+                history=history,
+                snapshot=snapshot,
+                scoped=scoped,
+                precomputed=precomputed,
+                cached=cached,
+                cached_from_flight=cached_from_flight,
+                cache_vector=cache_vector,
+                resolved_top_k=resolved_top_k,
+                flight=flight,
+            )
+        except BaseException:
+            if flight is not None:
+                flight.resolve(None)
+            raise
+
+    async def _retrieve_and_open(
+        self,
+        *,
+        trace: Trace,
+        principal: Principal,
+        conversation_id: str | None,
+        plan: QueryPlan,
+        history: list[ChatMessage],
+        snapshot: Any,
+        scoped: MetadataFilter | None,
+        precomputed: Any | None,
+        cached: CachedAnswer | None,
+        cached_from_flight: bool,
+        cache_vector: Any | None,
+        resolved_top_k: int,
+        flight: Flight | None,
+    ) -> ChatTurn:
+        """Nửa sau của `_prepare`, tách ra **chỉ** để có một biên bắt ngoại lệ.
+
+        Không phải một phép tách theo trách nhiệm — nó vẫn là cùng một việc.
+        Nó tồn tại vì `try/except BaseException` bọc trọn phần còn lại của một
+        hàm 200 dòng thì cái `try` ấy che mất chỗ nào đang được bảo vệ, và
+        `AU-11` vừa dạy rằng cửa sổ đua nào không nhìn thấy được thì không ai
+        đóng."""
         contexts: list[RetrievedChunk] = []
         if plan.retrieves and cached is None:
             retrieve_kwargs: dict[str, Any] = {"filters": scoped}
@@ -823,13 +938,52 @@ class ChatService:
             bundle_version=snapshot.version,
             max_tokens=self.max_tokens,
             cached=cached,
+            cached_from_flight=cached_from_flight,
             cache_vector=cache_vector if cached is None else None,
             resolved_top_k=resolved_top_k,
+            # Bất biến: leader ⇒ `cached is None` (vé chỉ được nhận trong
+            # nhánh `cached is None`, và chỉ follower mới gán lại `cached`).
+            # Nên leader **luôn** đi đường sinh ở `stream_turn`, tức luôn chạy
+            # qua `finally` — chỗ duy nhất giải phóng vé.
+            flight=flight,
         )
 
     # ---------------------------------------------------------- nửa dưới
 
     async def stream_turn(self, turn: ChatTurn) -> AsyncGenerator[ChatEvent, None]:
+        """Lớp bọc mỏng quanh `_stream_turn`, **chỉ** để giải phóng vé `NEW-10`.
+
+        ⭐⭐ Nó tồn tại vì một bài test đỏ, không vì một linh cảm. `try` lớn của
+        `_stream_turn` bắt đầu **sau** hai khung đầu (`meta`, `sources`), nên
+        một client ngắt kết nối ở đúng khoảng ấy làm `finally` — chỗ duy nhất
+        gọi `resolve()` — không bao giờ chạy, và mọi người theo sau chờ đủ 15
+        giây cho một request đã chết từ mili giây thứ nhất.
+
+        ⚠️ Đây là **cùng một hình dạng** với `AU-11`: một cửa sổ hẹp giữa hai
+        bước, vô hình với mọi bài test đi hết đường vui. Khác biệt duy nhất là
+        lần này có bài test đi tìm nó (`test_a_client_that_disconnects...`).
+
+        `_schedule_save` và `trace.finish` **cố ý** không được kéo lên đây:
+        chúng thuộc về một lượt đã sinh ra chữ, và một request chết ở khung
+        `meta` thì chưa có gì để lưu. Vé thì khác — nó là thứ **người khác**
+        đang chờ.
+        """
+        try:
+            # ⚠️ `aclosing`, không phải `async for` trần. Đóng generator ngoài
+            # **không** đóng generator trong một cách dứt khoát — nó chờ GC — nên
+            # `finally` của `_stream_turn` (chỗ ghi Postgres và đóng trace) chạy
+            # muộn hoặc không chạy. Hai bài huỷ có sẵn từ `W4-06` đỏ ngay khi
+            # lớp bọc này được thêm vào, và đó là cách nó bị bắt.
+            async with aclosing(self._stream_turn(turn)) as inner:
+                async for event in inner:
+                    yield event
+        finally:
+            # Chạy **sau** `finally` của generator trong, nên `shared_answer`
+            # đã được đặt nếu lượt ấy đi tới nơi.
+            if turn.flight is not None:
+                turn.flight.resolve(turn.shared_answer)
+
+    async def _stream_turn(self, turn: ChatTurn) -> AsyncGenerator[ChatEvent, None]:
         """Từ đây trở đi mọi lỗi chỉ còn là một khung SSE.
 
         ⚠️ Kiểu trả về là `AsyncGenerator`, **không** phải `AsyncIterator`, và đó
@@ -902,6 +1056,7 @@ class ChatService:
             )
             replay = turn.trace.span("cache.replay", input=cached.question)
             replay.end(
+                via="single_flight" if turn.cached_from_flight else "cache",
                 output=cached.text,
                 model=cached.model,
                 similarity=cached.similarity,
@@ -1191,6 +1346,18 @@ class ChatService:
             ):
                 # Ghi cache là việc phụ — chạy nền như đường ghi Postgres, và
                 # cùng lý do phải giữ tham chiếu mạnh (xem `_PENDING`).
+                turn.shared_answer = CachedAnswer(
+                    question=turn.plan.question,
+                    text="".join(emitted),
+                    sources=turn.sources(),
+                    citations_frame=report.as_frame() if turn.plan.retrieves else None,
+                    model=served_model,
+                    # ⭐ `1.0`, không phải ngưỡng cache: người theo sau khớp
+                    # **nguyên văn** (`flight_key`), không khớp theo cosine. Con
+                    # số này đi thẳng ra khung `meta.cache.similarity` của
+                    # client, nên nó phải nói đúng loại khớp đã xảy ra.
+                    similarity=1.0,
+                )
                 store_task = asyncio.get_running_loop().create_task(
                     self.cache.store(
                         turn.principal.tenant_id,
