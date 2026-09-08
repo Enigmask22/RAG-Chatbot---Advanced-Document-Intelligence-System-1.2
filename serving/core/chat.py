@@ -510,17 +510,6 @@ class ChatTurn:
                 *self.history,
                 ChatMessage(role="user", content=f"{self.plan.original}{directive}"),
             ]
-        # ⭐⭐ `W4-12`: khối ngữ cảnh bọc trong mốc mang nonce, thay cho `[n] …`
-        # trần. Đây là chỗ DUY NHẤT của hàng rào là một cơ chế thật: nội dung
-        # tài liệu viết được mọi thứ, trừ 16 ký tự hex sinh ra SAU khi nó đã
-        # nằm trong index — nên nó không đóng được khối dữ liệu để mở một
-        # khối chỉ thị giả. Số `[n]` giữ trong mốc vì luật 2 và `W4-09` đánh
-        # số nguồn theo nó.
-        blocks = [
-            wrap_context(n, hit.chunk.content, self.nonce)
-            for n, hit in enumerate(self.contexts, start=1)
-        ]
-        context = "\n\n".join(blocks) if blocks else "(không tìm thấy tài liệu liên quan)"
         # ⭐⭐ **Cả hai** chuỗi, và thứ tự này là kết quả của một lần chạy thật.
         #
         # Bản đầu chỉ đưa câu **gốc**, với lý lẽ: truy hồi cần một chuỗi tự đủ
@@ -535,16 +524,60 @@ class ChatTurn:
         # dùng không gõ. Đưa cả hai giữ được cả hai: người dùng thấy chữ của
         # mình, model có bản đã giải nghĩa, và một bản viết lại lệch chủ đề nằm
         # ngay cạnh bản gốc để model tự thấy.
-        question = f"CÂU HỎI: {self.plan.original}"
-        if self.plan.rewritten:
-            question += f'\n(Hiểu đầy đủ theo hội thoại: "{self.plan.question}")'
         return [
             # `.replace` chứ không `.format`: template chứa `{"n": 1, …}` của
             # mẫu CITATIONS, và `.format` sẽ nổ trên đúng những dấu ngoặc ấy.
             ChatMessage(role="system", content=SYSTEM_PROMPT.replace("{{nonce}}", self.nonce)),
             *self.history,
-            ChatMessage(role="user", content=f"NGỮ CẢNH:\n{context}\n\n{question}{directive}"),
+            ChatMessage(role="user", content="\n\n".join(self.user_content_parts())),
         ]
+
+    def context_blocks(self) -> list[str]:
+        """⭐⭐ `W4-12`: khối ngữ cảnh bọc trong mốc mang nonce, thay cho `[n] …`
+        trần. Đây là chỗ DUY NHẤT của hàng rào là một cơ chế thật: nội dung
+        tài liệu viết được mọi thứ, trừ 16 ký tự hex sinh ra SAU khi nó đã
+        nằm trong index — nên nó không đóng được khối dữ liệu để mở một
+        khối chỉ thị giả. Số `[n]` giữ trong mốc vì luật 2 và `W4-09` đánh
+        số nguồn theo nó."""
+        return [
+            wrap_context(n, hit.chunk.content, self.nonce)
+            for n, hit in enumerate(self.contexts, start=1)
+        ]
+
+    def _user_tail(self) -> str:
+        question = f"CÂU HỎI: {self.plan.original}"
+        if self.plan.rewritten:
+            question += f'\n(Hiểu đầy đủ theo hội thoại: "{self.plan.question}")'
+        return f"{question}{self.plan.directive()}"
+
+    def user_content_parts(self) -> list[str]:
+        """Message user cuối, dưới dạng CÁC MẢNH — `TD-74`.
+
+        ⭐⭐ Bất biến: `"\n\n".join(parts)` phải bằng ĐÚNG chuỗi đã gửi cho model
+        (có test ghim). Vì thế header "NGỮ CẢNH:" dán vào khối đầu bằng `\n`
+        (đúng như chuỗi ghép cũ) chứ không đứng thành mảnh riêng.
+
+        Lý do tồn tại: `redact()` cắt MỖI CHUỖI ở `_MAX_TEXT` (4.000), mà một
+        khối 5 chunk là ~10k — cắt chuỗi đã ghép làm người gỡ lỗi mất nửa sau
+        ngữ cảnh, thường là nửa chứa lỗi. Cắt theo mảnh thì mỗi chunk có ngân
+        sách 4.000 của riêng nó, và khối nào bị cắt tự khai ngay trong mảnh ấy.
+        """
+        blocks = self.context_blocks() or ["(không tìm thấy tài liệu liên quan)"]
+        return [f"NGỮ CẢNH:\n{blocks[0]}", *blocks[1:], self._user_tail()]
+
+    def prompt_trace_view(self, messages: list[ChatMessage]) -> list[dict[str, Any]]:
+        """Cách span `prompt` nhìn `messages` — `TD-74`: message ngữ cảnh phát
+        `content_parts` thay vì `content`, để `redact()` (vốn đệ quy qua list)
+        cắt từng khối một. Các message khác giữ nguyên `content`.
+
+        ⚠️ Đây là một CÁCH TRÌNH BÀY, không phải một nguồn thứ hai: các mảnh
+        đến từ đúng các hàm mà `prompt()` dùng để ghép, và bất biến tái dựng
+        ở `user_content_parts` giữ cho hai đường không trôi khỏi nhau.
+        """
+        out: list[dict[str, Any]] = [{"role": m.role, "content": m.content} for m in messages]
+        if self.plan.retrieves and out:
+            out[-1] = {"role": "user", "content_parts": self.user_content_parts()}
+        return out
 
 
 def prepare_ms_of(turn: ChatTurn) -> float | None:
@@ -1208,7 +1241,9 @@ class ChatService:
             # `redact()` che `nonce` ở đây — xem `tracing.NONCE_MASK`. Đây là
             # span DUY NHẤT mang nguyên văn thứ đã gửi cho model, nên nó cũng là
             # chỗ duy nhất mã phiên của `W4-12` có thể rời khỏi tiến trình.
-            output=[{"role": m.role, "content": m.content} for m in messages],
+            # `TD-74`: message ngữ cảnh đi vào dưới dạng `content_parts` để trần
+            # 4.000 ký tự của `redact()` áp cho TỪNG khối, không cho chuỗi ghép.
+            output=turn.prompt_trace_view(messages),
             n_messages=len(messages),
             n_context_chunks=len(turn.contexts),
             prompt_chars=sum(len(m.content) for m in messages),

@@ -391,9 +391,15 @@ class TestRedaction:
         và DoD của hạng mục này là một **ảnh chụp** của trace."""
         client, recorder = app
         _ask(client)
-        rendered = str(_span(recorder.traces[0], "prompt").output)
+        output = _span(recorder.traces[0], "prompt").output
+        rendered = str(output)
         assert "NGỮ CẢNH" in rendered
         assert NONCE_MASK in rendered
+        # `TD-74`: message ngữ cảnh phải đi vào dưới dạng `content_parts` —
+        # từng khối một ngân sách cắt riêng. Ghim Ở ĐÂY (span thật, app thật)
+        # vì unit test không thấy được việc callsite quay về chuỗi ghép.
+        assert "content_parts" in output[-1], output[-1].keys()
+        assert all(isinstance(p, str) for p in output[-1]["content_parts"])
 
     def test_no_span_anywhere_leaks_a_sixteen_hex_run(self, app: Any) -> None:
         import re

@@ -1579,3 +1579,54 @@ async def test_ghi_nhan_chi_phi_THAT_sau_khi_stream_xong() -> None:
     assert spend.charges, f"không ghi nhận chi phí nào (_PENDING={len(_PENDING)})"
     tenant, amount = spend.charges[0]
     assert tenant == "acme" and amount > 0
+
+
+# ---------------------------------------------------------------------------
+# 12. `TD-74` — trace cắt theo KHỐI, không cắt chuỗi ngữ cảnh đã ghép
+# ---------------------------------------------------------------------------
+
+
+class TestTD74PromptTraceView:
+    def test_join_parts_tai_dung_DUNG_chuoi_da_gui(self) -> None:
+        """⭐⭐ Bất biến giữ cho hai đường không trôi: cách trình bày cho trace
+        và chuỗi gửi cho model đến từ CÙNG các mảnh. Vỡ bất biến này thì trace
+        khai một prompt không ai gửi — tệ hơn cả bị cắt."""
+        turn = _turn()
+        assert "\n\n".join(turn.user_content_parts()) == turn.prompt()[-1].content
+
+    def test_bat_bien_van_dung_khi_co_ban_viet_lai_va_khi_khong_co_chunk(self) -> None:
+        co_rewrite = _turn(plan=_plan("RRF k=1?", original="cái đó thì sao?", rewritten=True))
+        assert "\n\n".join(co_rewrite.user_content_parts()) == co_rewrite.prompt()[-1].content
+        khong_chunk = _turn(contexts=[])
+        assert "\n\n".join(khong_chunk.user_content_parts()) == khong_chunk.prompt()[-1].content
+
+    def test_moi_chunk_co_ngan_sach_cat_RIENG(self) -> None:
+        """⭐⭐ Chính `TD-74`: 5 khối × 6.000 ký tự = ~30k, chuỗi ghép bị
+        `redact()` cắt ở 4.000 nghĩa là người gỡ lỗi mất khối 2–5 — thường là
+        chỗ chứa lỗi. Với `content_parts`, ĐẦU của MỌI khối phải sống sót."""
+        from serving.core.tracing import redact
+
+        contexts = [_hit(n, f"DAU_KHOI_{n} " + "x" * 6_000) for n in range(1, 6)]
+        turn = _turn(contexts=contexts)
+        rendered = str(redact(turn.prompt_trace_view(turn.prompt())))
+        for n in range(1, 6):
+            assert f"DAU_KHOI_{n}" in rendered, f"khối {n} biến mất khỏi trace sau khi cắt"
+        assert "… (cắt" in rendered, "khối 6.000 ký tự phải bị cắt — trần 4.000 vẫn còn hiệu lực"
+
+    def test_message_cuoi_mang_content_parts_cac_message_khac_giu_content(self) -> None:
+        turn = _turn()
+        messages = turn.prompt()
+        view = turn.prompt_trace_view(messages)
+        assert set(view[-1]) == {"role", "content_parts"}
+        assert len(view[-1]["content_parts"]) == len(turn.contexts) + 1, (
+            "mỗi chunk một mảnh (header dán vào khối đầu) + một mảnh câu hỏi"
+        )
+        for m in view[:-1]:
+            assert set(m) == {"role", "content"}
+
+    def test_nhanh_no_retrieval_giu_nguyen_content(self) -> None:
+        """Nhánh không truy hồi không có khối nào để cắt riêng — và message của
+        nó là chữ người dùng, thứ `redact()` xử lý như mọi chuỗi khác."""
+        turn = _turn(plan=_plan("chào bạn", route="no_retrieval"), contexts=[])
+        view = turn.prompt_trace_view(turn.prompt())
+        assert all(set(m) == {"role", "content"} for m in view)
