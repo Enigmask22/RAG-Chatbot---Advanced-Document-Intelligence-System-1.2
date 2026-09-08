@@ -42,6 +42,7 @@ from pydantic import BaseModel, Field
 
 from rag_core.bundle import BundleValidationError
 from serving.api.health import RegistryDep
+from serving.core.libversions import library_versions
 from serving.core.registry import ActiveBundle, BundleRegistry, NothingToRollBackError
 from serving.core.runtime import BundleRuntimeError, drift_of
 
@@ -78,6 +79,13 @@ def show(registry: RegistryDep) -> dict[str, Any]:
     """Đang chạy bản nào, lùi được về đâu. Một lệnh `curl`, không cần vào log."""
     payload: dict[str, Any] = dict(registry.status())
     payload["active_detail"] = _describe(registry.active) if registry.is_ready else None
+    # ⭐ `TD-62`: **ngoài** `active_detail`, có chủ đích. Phiên bản thư viện là
+    # thuộc tính của **tiến trình**, không của bundle — đặt nó trong khối mô tả
+    # bundle sẽ đọc như thể bundle khai ra nó, mà bundle thì không (xem
+    # `libversions.py`: cưỡng chế đòi đổi manifest, và `TD-36` đã trả giá cho
+    # bài học ấy). Nó ở đây vì `runtime_drift` mù với trục này: sự cố sinh ra
+    # `TD-62` có `runtime_drift: null` trong suốt lúc cross-encoder chết.
+    payload["library_versions"] = library_versions()
     return payload
 
 

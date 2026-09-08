@@ -56,6 +56,7 @@ from serving.core.auth import ApiKeyStore
 from serving.core.chat import ChatService
 from serving.core.instrument import instrument_retriever
 from serving.core.langfuse import build_sink
+from serving.core.libversions import library_versions
 from serving.core.logging import configure_logging
 from serving.core.metrics import MetricsSink, RagMetrics
 from serving.core.probes import Check, ReadinessProbes
@@ -468,6 +469,14 @@ def create_app(
     # việc nói to.
     for prompt in default_registry().all():
         logger.info("prompt registry: %s (sha256 %s…)", prompt.spec, prompt.sha256[:12])
+
+    # `TD-62`: ba gói mà phiên bản của chúng đổi được hành vi model. Sự cố sinh
+    # ra nợ ấy có `runtime_drift: null` trong suốt lúc cross-encoder chết, vì
+    # phép so danh tính chỉ nhìn `(model, device, dtype)`.
+    logger.info(
+        "phiên bản thư viện model: %s",
+        ", ".join(f"{ten}={ver or 'không cài'}" for ten, ver in library_versions().items()),
+    )
 
     registry = BundleRegistry(
         root=resolved.bundle_root,
