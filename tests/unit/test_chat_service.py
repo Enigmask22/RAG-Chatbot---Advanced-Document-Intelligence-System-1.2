@@ -1477,3 +1477,99 @@ async def test_a_real_cache_hit_is_still_labelled_cache() -> None:
     await _drain(_service(FakeLLM()), turn)
     spans = {s.name: s.metadata for s in turn.trace.spans}
     assert spans["cache.replay"]["via"] == "cache"
+
+
+# ---------------------------------------------------------------------------
+# 12. `TD-47` — trần chi phí THEO TENANT, ở chỗ nối `ChatService`
+# ---------------------------------------------------------------------------
+
+
+class _SpendGia:
+    """Đứng thay `RedisDailySpend`: ghi lại `peek`/`charge` thay vì đi Redis."""
+
+    def __init__(self, *, allowed: bool = True, spent: float = 0.0, cap: float = 1.0) -> None:
+        self.allowed = allowed
+        self.spent = spent
+        self.cap = cap
+        self.peeks: list[str] = []
+        self.charges: list[tuple[str, float]] = []
+
+    async def peek(self, tenant: str) -> Any:
+        from serving.core.quota import SpendDecision
+
+        self.peeks.append(tenant)
+        return SpendDecision(self.allowed, self.spent, self.cap, degraded=False)
+
+    async def charge(self, tenant: str, amount_usd: float) -> Any:
+        from serving.core.quota import SpendDecision
+
+        self.charges.append((tenant, amount_usd))
+        return SpendDecision(True, self.spent + amount_usd, self.cap, degraded=False)
+
+
+@pytest.mark.asyncio
+async def test_tenant_het_ngan_sach_thi_bi_chan_TRUOC_khi_truy_hoi() -> None:
+    """⭐⭐ Mệnh đề trung tâm của `TD-47` ở tầng chỗ nối, và nó có **hai** vế.
+
+    Chặn thôi chưa đủ: nếu phép chặn đứng sau bước truy hồi thì tenant hết
+    ngân sách vẫn tiêu GPU của mọi người — đúng cái `TD-63` gọi là trần thật
+    của hệ thống. Nên bài này khẳng định cả `retriever.calls == 0`.
+    """
+    from rag_core.llm import BudgetExceeded
+
+    service, retriever = _flight_service(SingleFlight())
+    service.single_flight = None
+    service.daily_spend = _SpendGia(allowed=False, spent=1.5, cap=1.0)  # type: ignore[assignment]
+
+    with pytest.raises(BudgetExceeded, match="acme"):
+        await service.prepare(PRINCIPAL, question="RRF là gì?", conversation_id=None)
+    assert retriever.calls == 0, "đã truy hồi rồi mới chặn — tenant hết tiền vẫn tiêu GPU"
+
+
+@pytest.mark.asyncio
+async def test_tenant_con_ngan_sach_thi_di_binh_thuong() -> None:
+    """Nhóm chứng: không có nó thì bài trên xanh cả khi trần chặn **mọi** người."""
+    service, retriever = _flight_service(SingleFlight())
+    service.single_flight = None
+    spend = _SpendGia(allowed=True, spent=0.2, cap=1.0)
+    service.daily_spend = spend  # type: ignore[assignment]
+
+    await service.prepare(PRINCIPAL, question="RRF là gì?", conversation_id=None)
+    assert retriever.calls == 1
+    assert spend.peeks == ["acme"], "phải hỏi theo ĐÚNG tenant của token"
+
+
+@pytest.mark.asyncio
+async def test_khong_cau_hinh_tran_thi_khong_doi_gi() -> None:
+    service, retriever = _flight_service(SingleFlight())
+    service.single_flight = None
+    service.daily_spend = None
+    await service.prepare(PRINCIPAL, question="RRF là gì?", conversation_id=None)
+    assert retriever.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_ghi_nhan_chi_phi_THAT_sau_khi_stream_xong() -> None:
+    """⭐ `peek` ở đầu chỉ **hỏi**; con số thật chỉ biết ở cuối. Ghi nhận một
+    ước lượng rồi không sửa lại là cách để sổ chi tiêu trôi khỏi hoá đơn."""
+    from serving.core.chat import _PENDING
+
+    service, _ = _flight_service(SingleFlight())
+    service.single_flight = None
+    # ⚠️ Tắt cache: `_MissCache` của fixture chỉ có `lookup`, và đường ghi cache
+    # ở cuối stream gọi `cache.store`. Bài này đo đường **chi phí**, không đo
+    # cache — mượn một fixture rồi để nó nổ ở nhánh khác là cách làm một bài
+    # test đỏ vì lý do không liên quan.
+    service.cache = None
+    spend = _SpendGia()
+    service.daily_spend = spend  # type: ignore[assignment]
+
+    turn = await service.prepare(PRINCIPAL, question="RRF là gì?", conversation_id=None)
+    await _drain(service, turn)
+    for _ in range(200):
+        if spend.charges:
+            break
+        await asyncio.sleep(0.005)
+    assert spend.charges, f"không ghi nhận chi phí nào (_PENDING={len(_PENDING)})"
+    tenant, amount = spend.charges[0]
+    assert tenant == "acme" and amount > 0

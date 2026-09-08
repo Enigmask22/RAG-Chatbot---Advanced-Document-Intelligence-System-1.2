@@ -378,6 +378,35 @@ def build_cache(settings: Settings) -> Any | None:
     )
 
 
+def build_quota(settings: Settings, fallback: RateLimiter) -> tuple[Any, Any | None]:
+    """`TD-39` + `TD-47` — hai bộ đếm dùng chung, **một** hạ tầng.
+
+    Trả `(limiter, daily_spend)`. Khi không có Redis thì trả thẳng `fallback` và
+    `None`: hệ giữ nguyên hành vi hôm nay thay vì mất hàng rào.
+
+    ⚠️ Công tắc là `settings.quota_shared`, **không** phải `chat_cache`. Gộp hai
+    thứ vào một cờ nghĩa là tắt cache thì mất luôn hạn mức phân tán — hai quyết
+    định vận hành khác hẳn nhau đi chung một công tắc là cách để một trong hai
+    bị tắt nhầm.
+    """
+    if not settings.quota_shared:
+        return fallback, None
+    try:
+        import redis.asyncio as aioredis
+    except ImportError:  # pragma: no cover - redis đi kèm arq trong extra serving
+        logger.warning("quota_shared bật nhưng thiếu gói redis — bộ đếm vẫn TRONG TIẾN TRÌNH")
+        return fallback, None
+    from serving.core.quota import RedisDailySpend, RedisRateLimiter
+
+    client = aioredis.from_url(settings.redis_url)  # type: ignore[no-untyped-call]
+    spend = (
+        RedisDailySpend(client, cap_usd=settings.chat_daily_budget_usd)
+        if settings.chat_daily_budget_usd > 0
+        else None
+    )
+    return RedisRateLimiter(client, fallback=fallback), spend
+
+
 def build_sessions() -> async_sessionmaker[AsyncSession] | None:
     """Factory phiên async cho đường request (`W4-06`).
 
@@ -508,6 +537,12 @@ def create_app(
     # vứt bao nhiêu). Một `FanoutSink` không có hàng đợi nào để khai.
     api.state.trace_sink = langfuse_sink
     llm = build_llm(resolved)
+    # ⚠️ **Trước** `ChatService`, không sau. Bản đầu dựng quota cạnh
+    # `ApiKeyStore` ở dưới, nên `ChatService(daily_spend=api.state.daily_spend)`
+    # đọc một thuộc tính chưa tồn tại — 6 bài `tests/security` đỏ ngay. Thứ tự
+    # ở đây là một phụ thuộc thật, không phải thẩm mỹ.
+    api.state.limiter_local = RateLimiter()
+    api.state.limiter, api.state.daily_spend = build_quota(resolved, api.state.limiter_local)
     api.state.chat = ChatService(
         registry=registry,
         sessions=build_sessions(),
@@ -527,6 +562,7 @@ def create_app(
             if resolved.chat_single_flight and resolved.chat_cache
             else None
         ),
+        daily_spend=api.state.daily_spend,
         sink=trace_sink,
     )
     # ⚠️ **Thứ tự quan trọng và nó ngược trực giác.** `add_middleware` *chèn lên
@@ -536,7 +572,6 @@ def create_app(
     # những phản hồi mà người vận hành cần truy vết lại là những phản hồi không
     # truy được. Có test ghim (`test_a_401_still_carries_a_request_id`).
     api.state.keys = ApiKeyStore.load(resolved.api_keys_file)
-    api.state.limiter = RateLimiter()
     # `NEW-12` — thêm **trước** auth, tức nằm **trong** nó. Xem docstring
     # `body_limit.py`: `AuthMiddleware` quyết định hoàn toàn bằng header và
     # không chạm `receive`, nên với một thân 200 MB **không khoá** nó từ chối

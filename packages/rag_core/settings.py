@@ -191,6 +191,18 @@ class Settings(BaseSettings):
     biến mất mà không chạy `finally` (tiến trình bị giết) — ca duy nhất mà
     đường `resolve()` không phủ."""
 
+    # `TD-39` + `TD-47` — hai bộ đếm dùng chung giữa các replica.
+    quota_shared: bool = True
+    """Đưa hạn mức nhịp và trần chi phí ngày lên Redis.
+
+    ⚠️ Công tắc **riêng**, không dùng chung với `chat_cache`: tắt cache là một
+    quyết định về độ trễ/chi phí, tắt hạn mức phân tán là một quyết định về an
+    toàn. Cho chúng đi chung một cờ là cách để một trong hai bị tắt nhầm.
+
+    ⭐ `false` **không** nghĩa là không có hàng rào — nó nghĩa là tụt về đúng bộ
+    đếm trong tiến trình đang chạy hôm nay (trần thật = N× số replica). Cùng
+    đường lui mà `RedisRateLimiter` dùng khi Redis hỏng."""
+
     # `NEW-12` — trần kích thước THÂN request, ở tầng ASGI.
     max_body_bytes: int = Field(default=1024 * 1024, ge=1024)
     """Thân request hợp lệ **lớn nhất đo được** là 204.090 byte (`/ingest` với

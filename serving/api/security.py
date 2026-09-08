@@ -38,6 +38,7 @@ riêng và `X-Forwarded-For` giả được. Xem `TD-39`.
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 from typing import Any
@@ -117,7 +118,13 @@ class AuthMiddleware:
             await _deny(send, 403, f"key này không có scope {ADMIN_SCOPE!r}")
             return
 
-        decision = self.limiter.check(principal.tenant_id, principal.rate_limit_per_minute)
+        # ⭐ `TD-39`: `RateLimiter.check` đồng bộ, `RedisRateLimiter.check` thì
+        # không — bộ đếm dùng chung phải đi qua mạng. Nhận **cả hai** thay vì
+        # bắt mọi chỗ gọi đổi kiểu: 3 dòng ở đây rẻ hơn một lần đổi chữ ký lan
+        # qua hàng chục fixture, và biên async/sync là chi tiết triển khai của
+        # bộ đếm chứ không phải của hợp đồng "hỏi rồi cho qua hay chặn".
+        ket_qua = self.limiter.check(principal.tenant_id, principal.rate_limit_per_minute)
+        decision = await ket_qua if inspect.isawaitable(ket_qua) else ket_qua
         if not decision.allowed:
             logger.warning("429 tenant %s vượt %d/phút", principal.tenant_id, decision.limit)
             await _deny(

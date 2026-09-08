@@ -78,6 +78,7 @@ from rag_core.retrieval.filters import MetadataFilter
 from rag_core.retrieval.hybrid import QdrantHybridRetriever
 from rag_core.schemas import RetrievedChunk
 from serving.core.auth import Principal, tenant_filter
+from serving.core.quota import RedisDailySpend
 from serving.core.registry import ActiveBundle, BundleRegistry, NoBundleLoadedError
 from serving.core.semantic_cache import CachedAnswer, SemanticCache, embedder_of
 from serving.core.single_flight import Flight, SingleFlight, flight_key
@@ -267,6 +268,19 @@ def wants_precomputed(retriever: Any, embedder: Any) -> bool:
 
 
 _PENDING: set[asyncio.Task[None]] = set()
+
+
+async def _ghi_chi_phi(spend: RedisDailySpend, tenant: str, cost_usd: float) -> None:
+    """Bọc `charge` để nó trả `None`.
+
+    ⚠️ Không nới `_PENDING` thành `Task[Any]`: kiểu ấy đang nói đúng một điều —
+    *"mọi task nền ở đây là việc phụ, không ai đọc kết quả"* — và nới nó ra là
+    mở đường cho một task **có** kết quả bị bỏ quên ở đây. Rẻ hơn là vứt kết
+    quả ở đúng chỗ nó bị vứt.
+    """
+    await spend.charge(tenant, cost_usd)
+
+
 """Tham chiếu mạnh tới các task ghi đang chạy — xem §"Ngắt kết nối" ở docstring.
 
 `asyncio` chỉ giữ tham chiếu **yếu** tới task, nên một task không ai giữ có thể
@@ -582,6 +596,11 @@ class ChatService:
     """`W4-10`. `None` = tắt. Mọi lỗi cache đều suy giảm thành miss — cache
     không bao giờ được phép là lý do `/chat` trả lỗi."""
 
+    daily_spend: RedisDailySpend | None = None
+    """`TD-47`. `None` = chỉ còn trần toàn cục của router (hành vi trước
+    08/09/2026): một con số cho cả tiến trình, không chia theo tenant, về 0
+    sau mỗi restart, và N× khi có N replica."""
+
     single_flight: SingleFlight | None = None
     """`NEW-10`. `None` = tắt (mọi request trùng nhau tự đi đường riêng, tức
     hành vi trước 08/09/2026).
@@ -704,6 +723,25 @@ class ChatService:
         check = getattr(self.llm, "assert_within_budget", None)
         if callable(check):
             check()
+        # ⭐⭐ `TD-47`: trần **theo tenant**, ngay cạnh trần toàn cục ở trên —
+        # và hai cái này **không** thay nhau được.
+        #
+        # Trần của router là một con số cho cả tiến trình, nên một tenant đốt
+        # hết sẽ làm *mọi* tenant còn lại nhận `429`. Trần ở đây chia phần theo
+        # `tenant_id` và đếm trên Redis, nên nó vừa công bằng vừa không về 0
+        # sau restart. Trần kia **ở lại** làm hàng rào thô thứ hai: nó là thứ
+        # duy nhất còn chặn khi Redis hỏng và cả hai đường lui cùng bị nới ra.
+        #
+        # ⚠️ `peek`, không `charge`: chỗ này chỉ **hỏi**. Ghi nhận xảy ra sau
+        # khi biết chi phí thật, ở cuối `_stream_turn` — trả tiền cho một ước
+        # lượng rồi không sửa lại là cách để sổ chi tiêu trôi khỏi hoá đơn.
+        if self.daily_spend is not None:
+            quyet_dinh = await self.daily_spend.peek(principal.tenant_id)
+            if not quyet_dinh.allowed:
+                raise BudgetExceeded(
+                    f"tenant {principal.tenant_id!r} đã tiêu "
+                    f"${quyet_dinh.spent_usd:.4f}/${quyet_dinh.cap_usd:.2f} hôm nay"
+                )
 
         try:
             snapshot: ActiveBundle = self.registry.active
@@ -1211,6 +1249,21 @@ class ChatService:
                         "completion_tokens": chunk.final.usage.completion_tokens,
                         "cost_usd": round(chunk.final.usage.cost_usd, 6),
                     }
+                    # ⭐ `TD-47`: ghi nhận **chi phí thật**, không phải ước
+                    # lượng — và chạy **nền**, cùng lý do với đường ghi Postgres
+                    # và đường ghi cache. Một lượt đi Redis trên đường nóng chỉ
+                    # để cập nhật một con số mà lượt này **đã** được phép tiêu
+                    # là trả độ trễ cho một quyết định đã xong.
+                    if self.daily_spend is not None and chunk.final.usage.cost_usd > 0:
+                        ghi_no = asyncio.get_running_loop().create_task(
+                            _ghi_chi_phi(
+                                self.daily_spend,
+                                turn.principal.tenant_id,
+                                chunk.final.usage.cost_usd,
+                            )
+                        )
+                        _PENDING.add(ghi_no)
+                        ghi_no.add_done_callback(_PENDING.discard)
             tail = holdback.flush()
             if tail:
                 emitted.append(tail)

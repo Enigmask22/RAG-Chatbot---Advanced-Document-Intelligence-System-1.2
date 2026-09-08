@@ -64,7 +64,16 @@ def app_with_keys(tmp_path: Path) -> Iterator[TestClient]:
     write_bundle(root, "0.1.0")
     keys = tmp_path / "api-keys.json"
     keys.write_text(json.dumps(KEYS), encoding="utf-8")
-    settings = Settings(bundle_root=root, log_level="CRITICAL", api_keys_file=keys)
+    # ⚠️ `quota_shared=False` **tường minh**, và đó là một bản vá cho một lỗi
+    # thật. Mặc định `True` (`TD-39`) làm hạn mức đi qua Redis, nên kết quả của
+    # module này phụ thuộc vào việc **máy đang chạy có Redis hay không** — ba
+    # bài ở đây xanh khi Docker tắt và đỏ khi Docker bật. Cùng họ với `NEW-14`:
+    # một bài test mà kết quả do một thứ **ngoài** nó quyết định. Đường dùng
+    # chung được kiểm ở `tests/integration/test_quota_redis.py`, nơi Redis là
+    # điều kiện tiên quyết chứ không phải một biến môi trường tình cờ.
+    settings = Settings(
+        bundle_root=root, log_level="CRITICAL", api_keys_file=keys, quota_shared=False
+    )
     with TestClient(
         create_app(settings=settings, build_runtime=_runtime, probe_factory=_probes)
     ) as client:
@@ -332,9 +341,41 @@ def test_the_bucket_refills(app_with_keys: TestClient) -> None:
     429 là trạng thái tạm chứ không phải một cờ dính."""
     for _ in range(5):
         app_with_keys.get("/docs", headers=bearer(TENANT_KEY))
+    # `quota_shared=False` ở fixture ⇒ `state.limiter` **là** `RateLimiter`
+    # trong tiến trình, nên chọc thẳng vào bucket vẫn đúng.
     limiter = app_with_keys.app.state.limiter  # type: ignore[attr-defined]
     limiter.buckets["acme"].updated = time.monotonic() - 60
     assert app_with_keys.get("/docs", headers=bearer(TENANT_KEY)).status_code != 429
+
+
+def test_redis_chet_thi_van_chan_duoc_chu_khong_sap(tmp_path: Path) -> None:
+    """⭐⭐ `TD-39`: đường lui, đo ở tầng **app** chứ không chỉ ở tầng lớp.
+
+    Bật `quota_shared` rồi trỏ vào một Redis **không tồn tại**. Hai điều phải
+    đúng cùng lúc, và bỏ một trong hai là hỏng:
+
+    * API **vẫn phục vụ** — Redis chết không được biến thành sự cố API;
+    * hạn mức **vẫn chặn** — "fail-open" ở đây nghĩa là tụt về bộ đếm trong
+      tiến trình, không phải bỏ hàng rào.
+    """
+    root = tmp_path / "bundles"
+    write_bundle(root, "0.1.0")
+    keys = tmp_path / "api-keys.json"
+    keys.write_text(json.dumps(KEYS), encoding="utf-8")
+    settings = Settings(
+        bundle_root=root,
+        log_level="CRITICAL",
+        api_keys_file=keys,
+        quota_shared=True,
+        redis_url="redis://127.0.0.1:1/0",
+    )
+    with TestClient(
+        create_app(settings=settings, build_runtime=_runtime, probe_factory=_probes)
+    ) as client:
+        ma = [client.get("/docs", headers=bearer(TENANT_KEY)).status_code for _ in range(5)]
+        assert 200 in ma, "API sập theo Redis"
+        assert 429 in ma, "mất hàng rào — đây là 'mở cổng', không phải 'tụt về bộ đếm cục bộ'"
+        assert client.app.state.limiter.degraded > 0  # type: ignore[attr-defined]
 
 
 def test_the_probes_do_not_eat_the_quota(app_with_keys: TestClient) -> None:
