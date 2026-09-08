@@ -345,8 +345,13 @@ async def test_an_abandoned_generator_still_saves_when_it_is_finally_closed() ->
 
 
 @pytest.mark.asyncio
-async def test_an_empty_answer_is_not_written_as_an_empty_row() -> None:
-    """Một hàng rỗng trong lịch sử không phân biệt được với việc model im lặng."""
+async def test_an_empty_answer_reports_finish_reason_empty() -> None:
+    """Khung `done` phải nói `empty`, không phải `stop` với 0 ký tự.
+
+    `TD-78` đổi phần GHI: `_save` giờ điền `finish_reason="empty"` vào hàng
+    placeholder thay vì bỏ qua (kiểm ở `tests/integration/test_feedback.py`,
+    cần Postgres thật). Phần bài này ghim — nhãn trên khung SSE — không đổi.
+    """
     service = ChatService(registry=None, sessions=None, llm=FakeLLM([]))  # type: ignore[arg-type]
     events = await _drain(service, _turn())
 
@@ -555,8 +560,9 @@ async def test_a_budget_that_runs_out_mid_turn_is_an_error_frame_with_its_own_na
     assert "done" not in kinds
     assert "BudgetExceeded" in kinds["error"]["detail"]
     assert kinds["error"]["partial_chars"] == 0
-    # Lượt vẫn đi qua đường ghi với nhãn riêng; `_save` thật mới là chỗ từ chối
-    # ghi một hàng rỗng (`test_an_empty_answer_is_not_written_as_an_empty_row`).
+    # Lượt vẫn đi qua đường ghi với nhãn riêng — `TD-78`: `_save` thật điền nhãn
+    # ấy vào hàng placeholder đã ghi từ `_open_turn`, nên cả lượt 0 ký tự này
+    # cũng chấm feedback được.
     assert service.saved == [{"text": "", "model": "fake-model", "finish_reason": "budget"}]
 
 

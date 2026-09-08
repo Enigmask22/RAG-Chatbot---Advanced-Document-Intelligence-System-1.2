@@ -111,6 +111,8 @@ def app(feedback_workspace: Path, database: Any) -> Iterator[tuple[TestClient, _
         api_keys_file=feedback_workspace / "api-keys.json",
         chat_cache=False,
         chat_rewrite=False,
+        # Bộ đếm hạn mức cục bộ, bất kể Docker: xem chú thích ở `chat_app.make`.
+        quota_shared=False,
     )
     api = create_app(
         settings=settings,
@@ -144,9 +146,11 @@ def _frames(response: httpx.Response) -> list[tuple[str, dict[str, Any]]]:
 def _turn(client: TestClient, message: str = "RRF là gì?", *, key: str = KEY) -> dict[str, Any]:
     """Một lượt `/chat` trọn vẹn; trả về khung `meta`.
 
-    ⚠️ `_drain_saves` phải chạy sau: hàng trợ lý được ghi trong một task nền,
-    nên id trong khung `meta` trỏ vào một hàng chưa tồn tại cho tới lúc ấy. Đó
-    không phải một chi tiết của test — nó là `TD-78` nhìn từ phía client.
+    ⚠️ `_drain_saves` vẫn phải chạy sau — nhưng lý do đã đổi cùng `TD-78`: hàng
+    trợ lý giờ TỒN TẠI từ `_open_turn` (feedback không còn 404), chỉ là nó chưa
+    được ĐIỀN (content, trace_id, citations) cho tới khi task nền chạy xong.
+    Bài nào đọc nội dung hàng ấy mà bỏ drain sẽ thấy placeholder — và placeholder
+    bị đường đọc lịch sử lọc đi.
     """
     response = client.post(
         "/chat", json={"message": message}, headers={"Authorization": f"Bearer {key}"}
@@ -703,3 +707,259 @@ class TestCommentRedaction:
         comment = mine[0]["comment"]
         assert "0912345678" not in comment
         assert "toi@example.com" not in comment
+
+
+# ---------------------------------------------------------------------------
+# 7. `TD-78` — lượt model im lặng chấm được, vì hàng trợ lý ghi từ `_open_turn`
+# ---------------------------------------------------------------------------
+
+
+class _SilentLLM:
+    """Model trả về 0 ký tự — chính lượt sinh ra `TD-78`."""
+
+    name = "fake"
+    model = "fake-model"
+
+    async def astream(
+        self,
+        messages: Any,
+        *,
+        temperature: float = 0.0,
+        max_tokens: int | None = None,
+        extra_body: Any = None,
+    ) -> Any:
+        from rag_core.llm import LLMChunk, LLMResponse
+        from rag_core.schemas import TokenUsage
+
+        yield LLMChunk(
+            final=LLMResponse(
+                text="",
+                model="fake-model-served",
+                model_requested="fake-model",
+                usage=TokenUsage(prompt_tokens=10, completion_tokens=0, cost_usd=0.0),
+                finish_reason="stop",
+            )
+        )
+
+
+class _RecordingLLM(FakeLLM):
+    """Như `FakeLLM`, nhưng giữ lại prompt đã nhận — để nhìn được `_history`."""
+
+    def __init__(self) -> None:
+        self.prompts: list[Any] = []
+
+    async def astream(self, messages: Any, **kwargs: Any) -> Any:
+        self.prompts.append(list(messages))
+        async for chunk in super().astream(messages, **kwargs):
+            yield chunk
+
+
+class TestTheEmptyTurnCanBeRated:
+    """`TD-78` phần còn lại: hàng trợ lý ghi placeholder trong `_open_turn`
+    (cùng transaction với câu hỏi), `_save` chỉ còn điền vào — nên id trong
+    khung `meta` là hàng thật từ trước khung SSE đầu tiên, và lượt model im
+    lặng — đúng lượt đáng nhận 👎 nhất — có chỗ để chấm."""
+
+    def test_the_row_exists_before_the_stream_ends(self, app: Any, database: Any) -> None:
+        """⭐⭐ Cửa sổ đua của `TD-78` đóng ở đây: feedback tới TRƯỚC khi task
+        nền chạy vẫn có hàng để trỏ. Đọc thẳng Postgres GIỮA stream — không
+        drain, không chờ — vì "trước khi stream kết thúc" là chính mệnh đề."""
+        from sqlalchemy import text
+
+        client, _ = app
+        with client.stream(
+            "POST",
+            "/chat",
+            json={"message": "RRF là gì?"},
+            headers={"Authorization": f"Bearer {KEY}"},
+        ) as response:
+            meta: dict[str, Any] | None = None
+            name = ""
+            for line in response.iter_lines():
+                if line.startswith("event: "):
+                    name = line[len("event: ") :]
+                elif line.startswith("data: ") and name == "meta":
+                    meta = json.loads(line[len("data: ") :])
+                    break
+            assert meta is not None
+            with database.begin() as conn:
+                row = conn.execute(
+                    text("SELECT role, content, finish_reason FROM message WHERE id = :id"),
+                    {"id": meta["answer_message_id"]},
+                ).one()
+        assert tuple(row) == ("assistant", "", "pending")
+        _drain_saves()
+
+    def test_a_silent_model_turn_takes_a_thumbs_down(self, app: Any, database: Any) -> None:
+        """Trước `TD-78` lượt này trả 404 — `_save` bỏ qua text rỗng nên id
+        trong `meta` trỏ vào hư không. Giờ 👎 phải là 201, và mục trong hàng
+        đợi review phải mang đúng CÂU HỎI (khoá `user_message_id` đặt ngay lúc
+        ghi placeholder, không đợi task nền).
+
+        ⚠️ Kèm phép ghim `finish_reason == "empty"` đọc THẲNG từ Postgres: một
+        `_save` quay về nết cũ (return sớm khi text rỗng) vẫn qua được mọi phép
+        khẳng định khác của bài này — placeholder tồn tại nên 👎 vẫn 201 — chỉ
+        khác là hàng kẹt ở `pending` và người review không phân biệt được "model
+        im lặng" với "lượt chưa từng kết thúc"."""
+        from sqlalchemy import text
+
+        client, _ = app
+        chat = client.app.state.chat
+        goc = chat.llm
+        chat.llm = _SilentLLM()
+        try:
+            response = client.post(
+                "/chat",
+                json={"message": "Câu này model sẽ im lặng?"},
+                headers={"Authorization": f"Bearer {KEY}"},
+            )
+            assert response.status_code == 200
+            frames = dict(_frames(response))
+            _drain_saves()
+        finally:
+            chat.llm = goc
+
+        assert frames["done"]["finish_reason"] == "empty"
+        with database.begin() as conn:
+            da_ghi = conn.execute(
+                text("SELECT finish_reason FROM message WHERE id = :id"),
+                {"id": frames["meta"]["answer_message_id"]},
+            ).scalar_one()
+        assert da_ghi == "empty", "_save phải ĐIỀN vào placeholder, không bỏ qua nó"
+        assert _rate(client, frames["meta"]["answer_message_id"], -1).status_code == 201
+        mine = [i for i in _queue(client) if i["message_id"] == frames["meta"]["answer_message_id"]]
+        assert mine, "lượt rỗng bị 👎 phải nổi lên hàng đợi review"
+        assert mine[0]["question"] == "Câu này model sẽ im lặng?"
+
+    def test_history_hides_the_empty_row(self, app: Any) -> None:
+        """Quyết định `W4-06` giữ nguyên Ở PHÍA NGƯỜI ĐỌC: hàng rỗng tồn tại
+        cho feedback, không cho hiển thị — người dùng tải lại trang thấy câu
+        hỏi của mình, không thấy một câu trả lời trống vờ như có nội dung."""
+        client, _ = app
+        chat = client.app.state.chat
+        goc = chat.llm
+        chat.llm = _SilentLLM()
+        try:
+            meta = _turn(client, "Lượt này sẽ rỗng?")
+        finally:
+            chat.llm = goc
+        history = client.get(
+            f"/conversations/{meta['conversation_id']}",
+            headers={"Authorization": f"Bearer {KEY}"},
+        ).json()
+        assert [m["role"] for m in history["messages"]] == ["user"]
+
+    def test_the_page_limit_counts_visible_rows_not_hidden_ones(
+        self, app: Any, database: Any
+    ) -> None:
+        """⭐ Vì sao bộ lọc phải nằm TRONG SQL: client đọc "trang ngắn hơn
+        `limit`" là "hết lịch sử" (`next_after` suy từ `len == limit`). Lọc ở
+        Python SAU `limit` thì một hàng rỗng lọt vào trang làm trang hụt đi
+        một — và client dừng phân trang giữa một lịch sử vẫn còn."""
+        client, _ = app
+        _insert_conversation(database, "convrong")
+        _insert_message(
+            database, id="u1", conv_id="convrong", role="user", content="Hỏi 1?", offset_s=0
+        )
+        _insert_message(
+            database, id="a1", conv_id="convrong", role="assistant", content="", offset_s=1
+        )
+        _insert_message(
+            database, id="u2", conv_id="convrong", role="user", content="Hỏi 2?", offset_s=2
+        )
+        _insert_message(
+            database, id="a2", conv_id="convrong", role="assistant", content="Đáp 2.", offset_s=3
+        )
+        _insert_message(
+            database, id="u3", conv_id="convrong", role="user", content="Hỏi 3?", offset_s=4
+        )
+
+        page = client.get(
+            "/conversations/convrong",
+            params={"limit": 3},
+            headers={"Authorization": f"Bearer {KEY}"},
+        ).json()
+        assert [m["id"] for m in page["messages"]] == ["u1", "u2", "a2"]
+        assert page["next_after"] == "a2", "trang đầy thì phải còn trang sau"
+
+    def test_empty_rows_do_not_eat_the_prompt_history_budget(self, app: Any, database: Any) -> None:
+        """⭐ Vì sao `_history` cũng lọc TRONG SQL: nó lấy `MAX_HISTORY_MESSAGES`
+        hàng MỚI NHẤT rồi mới lọc ở Python. Một tenant có nhiều lượt rỗng liên
+        tiếp (provider trục trặc một lúc) sẽ lấp đầy cửa sổ ấy bằng hàng vô
+        hình — và prompt mất sạch phần hội thoại thật, không dấu vết.
+
+        Quan sát qua ĐƯỜNG THẬT (`POST /chat` + LLM ghi lại prompt nhận được),
+        không gọi `chat._history` tay: `sessions` của app sống trong vòng lặp
+        của portal `TestClient`, gọi từ vòng lặp của `pytest.mark.asyncio` là
+        một `InterfaceError` cross-loop — đo được, không phải phỏng đoán."""
+        from serving.core.chat import MAX_HISTORY_MESSAGES
+
+        client, _ = app
+        _insert_conversation(database, "convbudget")
+        _insert_message(
+            database,
+            id="that_u",
+            conv_id="convbudget",
+            role="user",
+            content="Hỏi thật?",
+            offset_s=0,
+        )
+        _insert_message(
+            database,
+            id="that_a",
+            conv_id="convbudget",
+            role="assistant",
+            content="Đáp thật.",
+            offset_s=1,
+        )
+        for i in range(MAX_HISTORY_MESSAGES):
+            _insert_message(
+                database,
+                id=f"rong{i}",
+                conv_id="convbudget",
+                role="assistant",
+                content="",
+                offset_s=2 + i,
+            )
+
+        chat = client.app.state.chat
+        ghi_am = _RecordingLLM()
+        goc = chat.llm
+        chat.llm = ghi_am
+        try:
+            response = client.post(
+                "/chat",
+                json={"message": "Tiếp câu trước?", "conversation_id": "convbudget"},
+                headers={"Authorization": f"Bearer {KEY}"},
+            )
+            assert response.status_code == 200
+            response.read()
+            _drain_saves()
+        finally:
+            chat.llm = goc
+
+        noi_dung = "\n".join(m.content for m in ghi_am.prompts[0])
+        assert "Đáp thật." in noi_dung, "hàng rỗng đã ăn hết cửa sổ MAX_HISTORY_MESSAGES của prompt"
+
+    def test_the_filled_answer_is_strictly_after_its_question(
+        self, app: Any, database: Any
+    ) -> None:
+        """⚠️ Ghim TẤT ĐỊNH cho mốc thời gian của `_save`: placeholder chèn CÙNG
+        transaction với câu hỏi nhận CÙNG một `now()` (Postgres: transaction
+        start), nên nếu `_save` không đặt lại `created_at` lúc điền thì thứ tự
+        `(created_at, id)` rơi xuống so id ngẫu nhiên — hai bài của
+        `test_chat_stream` chỉ đỏ ~50% số lần (tung đồng xu trên uuid), còn bài
+        này đỏ MỌI lần vì nó so thẳng hai mốc chứ không so thứ tự suy ra."""
+        from sqlalchemy import text
+
+        client, _ = app
+        meta = _turn(client)
+        with database.begin() as conn:
+            hoi, dap = conn.execute(
+                text(
+                    "SELECT (SELECT created_at FROM message WHERE id = :u),"
+                    " (SELECT created_at FROM message WHERE id = :a)"
+                ),
+                {"u": meta["message_id"], "a": meta["answer_message_id"]},
+            ).one()
+        assert dap > hoi, "câu trả lời phải mang mốc LÚC ĐIỀN, không phải mốc placeholder"

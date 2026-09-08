@@ -139,12 +139,13 @@ class TestThePageKnowsWhatTheApiActuallySends:
         hỏi thì hàng feedback gắn vào lượt sai và không ai thấy gì đỏ."""
         assert "answer_message_id" in CODE
 
-    def test_it_disables_feedback_on_an_empty_answer(self) -> None:
-        """`TD-78`: `_save()` bỏ qua câu trả lời rỗng, nên `answer_message_id`
-        trỏ vào một hàng không tồn tại và `POST /feedback` trả 404 — đúng lượt
-        đáng nhận 👎 nhất."""
-        assert 'finishReason === "empty"' in CODE
-        assert "TD-78" in PAGE
+    def test_it_no_longer_disables_feedback_on_an_empty_answer(self) -> None:
+        """`TD-78` đã đóng: placeholder ghi từ `_open_turn` nên lượt model im
+        lặng — đúng lượt đáng nhận 👎 nhất — chấm được như mọi lượt khác. Nút
+        chỉ còn ẩn khi KHÔNG có `message_id` (chế độ không trạng thái), và
+        không còn nhánh nào tắt theo `finish_reason`."""
+        assert 'finishReason === "empty"' not in CODE
+        assert "if (!messageId)" in CODE
 
     def test_it_treats_end_of_stream_as_an_error_not_as_success(self) -> None:
         """Docstring của `POST /chat`: một dòng `delta` dừng lại giống hệt nhau

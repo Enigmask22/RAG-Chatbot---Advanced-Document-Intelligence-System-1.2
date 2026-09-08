@@ -215,7 +215,9 @@ class TestFeedback:
         _ask(page)
         buttons = page.locator(".turn .meta button")
         if buttons.count() == 0:
-            pytest.skip("lượt này không chấm được (câu trả lời rỗng — TD-78)")
+            # `TD-78` đã đóng: lượt rỗng cũng chấm được, nút chỉ vắng khi
+            # `meta` không mang `message_id` (server chạy không Postgres).
+            pytest.skip("lượt này không có message_id — server không trạng thái?")
         buttons.first.click()
         page.wait_for_function(
             "() => document.querySelector('.turn .meta span.note')?.textContent?.includes('đã ghi')",

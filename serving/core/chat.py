@@ -61,7 +61,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from rag_core.generation import (
@@ -347,9 +347,13 @@ class ChatTurn:
     Sinh trước, phát ra trong `meta`, rồi `_save()` dùng lại — nên client cầm
     khoá từ khung đầu tiên chứ không phải sau khung cuối.
 
-    ⚠️ Id này là một **lời hứa**, không phải một sự thật: `_save()` bỏ qua câu
-    trả lời rỗng, nên với một lượt model im lặng thì hàng ấy không bao giờ tồn
-    tại và feedback vào nó trả 404. Đó là đúng lượt đáng nhận 👎 nhất. `TD-78`.
+    ⭐ `TD-78`: id này là một **sự thật**, không còn là một lời hứa — `_open_turn`
+    ghi hàng placeholder (`content=""`, `finish_reason="pending"`) trong cùng
+    transaction với câu hỏi, và `_save` chỉ còn **điền vào**. Feedback tới trước
+    khi task nền chạy, hay tới cho một lượt model im lặng, đều có hàng để trỏ.
+
+    Default factory chỉ còn cho chế độ không trạng thái (`sessions=None`) và cho
+    test dựng `ChatTurn` bằng tay; đường thật luôn nhận id từ `_open_turn`.
     """
 
     cached: CachedAnswer | None = None
@@ -952,7 +956,7 @@ class ChatService:
                 )
             )
 
-        resolved_id, user_message_id = await self._open_turn(
+        resolved_id, user_message_id, answer_message_id = await self._open_turn(
             principal, conversation_id, plan, snapshot.version
         )
         trace.session_id = resolved_id
@@ -970,6 +974,7 @@ class ChatService:
             principal=principal,
             conversation_id=resolved_id,
             user_message_id=user_message_id,
+            answer_message_id=answer_message_id,
             plan=plan,
             history=history,
             contexts=contexts,
@@ -1506,7 +1511,14 @@ class ChatService:
             rows = (
                 await session.scalars(
                     select(Message)
-                    .where(Message.conversation_id == conversation_id)
+                    # `TD-78`: lọc hàng trợ lý rỗng (placeholder đang bay, lượt
+                    # `empty`, crash giữa chừng) TRONG SQL — lọc ở Python thì
+                    # mỗi hàng rỗng vẫn ăn mất một trong `MAX_HISTORY_MESSAGES`
+                    # slot của prompt.
+                    .where(
+                        Message.conversation_id == conversation_id,
+                        or_(Message.role != "assistant", Message.content != ""),
+                    )
                     # Lấy **mới nhất** rồi đảo lại, chứ không `LIMIT` từ đầu:
                     # `ORDER BY created_at ASC LIMIT 10` cho 10 message **đầu
                     # tiên** của hội thoại, tức prompt càng ngày càng lạc đề khi
@@ -1527,19 +1539,40 @@ class ChatService:
         conversation_id: str | None,
         plan: QueryPlan,
         bundle_version: str,
-    ) -> tuple[str, str]:
-        """Tạo hội thoại nếu cần, rồi ghi câu hỏi. Ghi **trước** khi sinh.
+    ) -> tuple[str, str, str]:
+        """Tạo hội thoại nếu cần, rồi ghi câu hỏi **và chỗ trống cho câu trả lời**.
 
         Ghi câu hỏi ở cuối lượt thì một lần crash giữa stream làm chính câu hỏi
         biến mất — người dùng tải lại trang và thấy câu mình vừa gõ không còn ở
         đâu cả. Mất câu trả lời thì họ hỏi lại được; mất câu hỏi thì lịch sử nói
         dối về chuyện đã xảy ra.
+
+        ## ⭐⭐ `TD-78`: hàng trợ lý ghi Ở ĐÂY, `_save` chỉ còn điền vào
+
+        Trước đây hàng trợ lý ra đời trong task nền SAU khi stream xong — nên
+        `answer_message_id` trong khung `meta` là một **lời hứa**: feedback tới
+        trước khi task chạy nhận 404, và một lượt model im lặng (`_save` bỏ qua
+        text rỗng) làm lời hứa ấy **không bao giờ** thành sự thật — đúng lượt
+        đáng nhận 👎 nhất.
+
+        Ghi placeholder (`content=""`, `finish_reason="pending"`) trong CÙNG
+        transaction với câu hỏi đóng cả hai lỗ một lần: id là hàng thật từ trước
+        khung SSE đầu tiên, và lượt rỗng giữ nguyên hàng với
+        `finish_reason="empty"` do `_save` điền — 👎 có chỗ để trỏ vào. Đường
+        đọc (`_history`, `load_history`) lọc `content == ""` nên quyết định của
+        `W4-06` — *"một hàng rỗng trong lịch sử tệ hơn không có hàng nào"* —
+        vẫn đúng ở phía người đọc; hàng tồn tại cho feedback, không cho hiển thị.
+
+        ⚠️ Crash giữa stream để lại `finish_reason="pending"` vĩnh viễn — cố ý:
+        đó là sự thật ("lượt này chưa từng kết thúc"), nó vô hình với người đọc
+        nhờ bộ lọc trên, và một job dọn dẹp cho nó là máy móc cho một ca chỉ
+        xảy ra khi tiến trình chết giữa chừng.
         """
         if self.sessions is None:
             # Id vẫn phát ra: khung `meta` và `answer_message_id` là hợp đồng
             # với client, không phải hệ quả của việc có Postgres. Chúng chỉ
             # không trỏ tới hàng nào.
-            return conversation_id or str(uuid.uuid4()), str(uuid.uuid4())
+            return conversation_id or str(uuid.uuid4()), str(uuid.uuid4()), uuid.uuid4().hex
         async with atenant_session(self.sessions, principal.tenant_id) as session:
             if conversation_id is None:
                 conversation = Conversation(
@@ -1564,8 +1597,23 @@ class ChatService:
             session.add(message)
             await session.flush()
             message_id = message.id
+            answer_id = uuid.uuid4().hex
+            session.add(
+                Message(
+                    id=answer_id,
+                    tenant_id=principal.tenant_id,
+                    conversation_id=conversation_id,
+                    role="assistant",
+                    content="",
+                    # Khoá nối `NEW-08`/`AU-07` đặt ngay lúc sinh: ở đây nó là
+                    # một sự thật hiển nhiên (câu hỏi vừa flush ở trên), còn ở
+                    # `_save` nó phải đi vòng qua `ChatTurn`.
+                    user_message_id=message_id,
+                    finish_reason="pending",
+                )
+            )
             await session.commit()
-        return conversation_id, message_id
+        return conversation_id, message_id, answer_id
 
     def _schedule_save(
         self,
@@ -1588,45 +1636,44 @@ class ChatService:
         finish_reason: str,
         citations: dict[str, Any] | None,
     ) -> None:
-        if not text:
-            # Không sinh được chữ nào: một hàng rỗng trong lịch sử tệ hơn là
-            # không có hàng nào — nó hiện ra như một câu trả lời trống và không
-            # phân biệt được với việc model im lặng.
-            logger.warning(
-                "không ghi message trợ lý cho %s: rỗng (%s)",
-                turn.conversation_id,
-                finish_reason,
-            )
-            return
         if self.sessions is None:
             return
+        # ⭐⭐ `TD-78`: UPDATE, không INSERT — hàng đã tồn tại từ `_open_turn`,
+        # trong cùng transaction với câu hỏi. Text rỗng KHÔNG return sớm nữa:
+        # lượt model im lặng điền `finish_reason="empty"` vào placeholder, và
+        # đó chính là hàng mà một cú 👎 cần để tồn tại. Đường đọc lọc
+        # `content == ""` nên hàng rỗng vẫn không hiện ra trong lịch sử.
         try:
             async with atenant_session(self.sessions, turn.principal.tenant_id) as session:
-                session.add(
-                    Message(
-                        # ⭐ Id đã phát ra trong khung `meta`, không phải một id
-                        # sinh ở đây — xem `ChatTurn.answer_message_id`.
-                        id=turn.answer_message_id,
-                        tenant_id=turn.principal.tenant_id,
-                        conversation_id=turn.conversation_id,
-                        role="assistant",
-                        content=text,
-                        # `W5-08`: hai cột, không một. `retrieved_sources` là cái
-                        # đã đưa vào; `citations_verified` là cái model nói nó
-                        # đã dùng, sau khi đối chiếu. Một câu 👎 chỉ phân loại
-                        # được khi có cả hai.
-                        retrieved_sources=turn.persisted_sources(),
-                        citations_verified=citations,
-                        # `NEW-08`/`AU-07`: khoá nối thật tới câu hỏi — hàng
-                        # user đã ghi từ `_open_turn`, còn hàng này ghi trong
-                        # task nền, nên `created_at` không phải một thứ tự.
-                        user_message_id=turn.user_message_id,
-                        trace_id=turn.trace.id,
-                        latency_ms=int((time.perf_counter() - turn.started) * 1000.0),
-                        model=model,
-                        finish_reason=finish_reason,
+                row = await session.get(Message, turn.answer_message_id)
+                if row is None:
+                    # Hội thoại bị xoá giữa lượt (script GDPR, CASCADE dọn cả
+                    # placeholder) — không có gì để điền, và tái tạo hàng cho
+                    # một hội thoại đã xoá là chống lại chính lệnh xoá ấy.
+                    logger.warning(
+                        "placeholder %s không còn (hội thoại %s đã xoá giữa lượt?)",
+                        turn.answer_message_id,
+                        turn.conversation_id,
                     )
-                )
+                    return
+                row.content = text
+                # `W5-08`: hai cột, không một. `retrieved_sources` là cái đã
+                # đưa vào; `citations_verified` là cái model nói nó đã dùng,
+                # sau khi đối chiếu. Một câu 👎 chỉ phân loại được khi có cả hai.
+                row.retrieved_sources = turn.persisted_sources()
+                row.citations_verified = citations
+                row.trace_id = turn.trace.id
+                row.latency_ms = int((time.perf_counter() - turn.started) * 1000.0)
+                row.model = model
+                row.finish_reason = finish_reason
+                # ⚠️ `created_at` đặt lại LÚC ĐIỀN, không giữ mốc placeholder:
+                # hai hàng chèn cùng transaction ở `_open_turn` nhận CÙNG một
+                # `now()` (Postgres: transaction start), nên thứ tự
+                # `(created_at, id)` giữa câu hỏi và câu trả lời rơi xuống so
+                # id ngẫu nhiên — `assistant` có thể đứng TRƯỚC `user`. Mốc
+                # "lúc điền" cũng chính là ngữ nghĩa cũ (hàng INSERT ở task nền
+                # sau khi stream xong), nên người đọc lịch sử không thấy khác.
+                row.created_at = func.now()
                 await session.commit()
         except Exception:
             # Task này chạy ngoài request; một exception ở đây không có ai bắt
@@ -1676,7 +1723,15 @@ async def load_history(
         )
         if exists is None:
             raise ConversationNotFound(f"không có hội thoại {conversation_id!r}")
-        query = select(Message).where(Message.conversation_id == conversation_id)
+        # `TD-78`: hàng trợ lý rỗng tồn tại CHO feedback, không cho hiển thị —
+        # quyết định `W4-06` ("một hàng rỗng tệ hơn không có hàng nào") giữ
+        # nguyên ở phía người đọc. Lọc trong SQL chứ không sau khi `limit`:
+        # client đọc "trang ngắn hơn `limit`" là "hết lịch sử", nên một trang
+        # bị lọc hụt ở Python sẽ cắt cụt lịch sử ngay giữa chừng, không dấu vết.
+        query = select(Message).where(
+            Message.conversation_id == conversation_id,
+            or_(Message.role != "assistant", Message.content != ""),
+        )
         if after is not None:
             anchor = (
                 await session.execute(

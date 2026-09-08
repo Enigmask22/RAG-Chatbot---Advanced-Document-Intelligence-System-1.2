@@ -420,16 +420,12 @@ function badge(parent, text, kind) {
   return b;
 }
 
-function feedbackButtons(parent, messageId, finishReason) {
-  if (finishReason === "empty" || !messageId) {
-    /* `TD-78`: `_save()` bỏ qua câu trả lời rỗng, nên `answer_message_id` trỏ
-     * vào một hàng KHÔNG tồn tại và `POST /feedback` trả 404 — đúng lượt đáng
-     * nhận 👎 nhất. Tắt nút và nói lý do, thay vì để người dùng bấm rồi nhận
-     * một lỗi không giải thích được. */
-    const n = document.createElement("span");
-    n.className = "note";
-    n.textContent = "(không chấm được lượt rỗng — TD-78)";
-    parent.appendChild(n);
+function feedbackButtons(parent, messageId) {
+  if (!messageId) {
+    /* Chế độ không trạng thái: id không trỏ tới hàng nào, feedback không có
+     * chỗ ghi. `TD-78` đã đóng ca "lượt rỗng": placeholder ghi từ `_open_turn`
+     * nên một lượt model im lặng — đúng lượt đáng nhận 👎 nhất — giờ chấm được
+     * như mọi lượt khác. */
     return;
   }
   const out = document.createElement("span");
@@ -498,7 +494,6 @@ async function ask() {
   const { answer, meta } = newTurn(question);
   let text = "";
   let messageId = null;
-  let finishReason = null;
   const verifiedByN = new Map();
   const started = performance.now();
   controller = new AbortController();
@@ -552,14 +547,13 @@ async function ask() {
           : "không có trích dẫn", bad ? "warn" : "ok");
       } else if (frame.event === "done") {
         sawDone = true;
-        finishReason = frame.data.finish_reason;
         const total = Math.round(performance.now() - started);
         badge(meta, total + " ms");
         if (frame.data.finish_reason === "cache") badge(meta, "trả từ cache", "ok");
         if (frame.data.finish_reason === "length") badge(meta, "bị cắt vì hết token", "warn");
         if (frame.data.finish_reason === "empty") badge(meta, "model không nói gì", "bad");
         if (frame.data.language_mismatch) badge(meta, "khác ngôn ngữ câu hỏi", "warn");
-        feedbackButtons(meta, messageId, finishReason);
+        feedbackButtons(meta, messageId);
       } else if (frame.event === "error") {
         const p = document.createElement("p");
         p.className = "error";

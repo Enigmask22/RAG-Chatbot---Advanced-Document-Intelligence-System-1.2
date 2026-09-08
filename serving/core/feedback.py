@@ -137,8 +137,10 @@ async def record_feedback(
         message = await session.scalar(select(Message).where(Message.id == message_id))
         if message is None:
             raise MessageNotFound(
-                f"không có message {message_id!r} — hoặc nó chưa được ghi xong "
-                "(câu trả lời lưu ở một task nền sau khi stream kết thúc)"
+                # `TD-78` đã đóng ca "chưa ghi xong": hàng trợ lý tồn tại từ
+                # `_open_turn`, trước cả khung SSE đầu tiên. Còn lại là id sai,
+                # tenant khác (RLS không phân biệt), hoặc hội thoại đã bị xoá.
+                f"không có message {message_id!r}"
             )
         if message.role != "assistant":
             # ⭐ Chặn ở đây chứ không để nó thành một hàng hợp lệ: một feedback
