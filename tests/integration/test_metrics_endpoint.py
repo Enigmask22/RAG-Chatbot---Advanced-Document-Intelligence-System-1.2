@@ -81,6 +81,14 @@ def app(metrics_workspace: Path, database: Any) -> Iterator[TestClient]:
         api_keys_file=metrics_workspace / "api-keys.json",
         chat_cache=False,
         chat_rewrite=False,
+        # ⚠️⚠️ Tường minh, không dựa mặc định: `quota_shared` mặc định `True`,
+        # nên thiếu dòng này thì `create_app` nối Redis **khi Docker đang bật**
+        # và `state.limiter` thành `RedisRateLimiter` (có `degraded`) — làm
+        # `test_bo_dem_cuc_bo_thuan_thi_khong_khai_bua` xanh khi Docker tắt và
+        # đỏ khi Docker bật. Chính bài test viết để ghim bài học "kết quả do
+        # một thứ ngoài bài test quyết định" lại tái phạm đúng bài học ấy,
+        # cùng ngày nó được gọi tên (08/09/2026, lần thứ năm).
+        quota_shared=False,
     )
     api = create_app(
         settings=settings,
@@ -396,3 +404,52 @@ def _value(text: str, series: str) -> float:
         if line.startswith(f"{series} "):
             return float(line.rsplit(" ", 1)[1])
     raise AssertionError(f"không thấy chuỗi {series!r} trong bản phơi bày")
+
+
+class TestQuotaDegradedGauge:
+    """`TD-39` — con số duy nhất phân biệt *"hạn mức đang đúng"* với *"hạn mức
+    đang là N× số replica và không ai biết"*.
+
+    Cùng lý lẽ với `rag_scrape_workers` ngay trên: bản phơi bày phải **tự nói ra
+    giả định của mình**. Khác ở chỗ giả định này đổi **lúc chạy** — nó đúng cho
+    tới đúng giây Redis hỏng.
+    """
+
+    def test_chua_tut_ve_lan_nao_thi_doc_ra_so_0(self, app: TestClient) -> None:
+        text = _scrape(app)
+        assert _value(text, 'rag_quota_degraded_total{counter="ratelimit"}') == 0.0
+        assert _value(text, 'rag_quota_degraded_total{counter="daily_spend"}') == 0.0
+
+    def test_bo_dem_cuc_bo_thuan_thi_khong_khai_bua(self, app: TestClient) -> None:
+        """`RateLimiter` trong tiến trình **không có** thuộc tính `degraded`.
+        Đọc `getattr(..., 0)` sẽ khai 0 như thể nó đang chạy đúng chế độ dùng
+        chung — mà nó thì không dùng chung gì cả. Ở cấu hình ấy con số phải giữ
+        nguyên 0 của `_declare_zero`, không phải một 0 do ai đó bịa ra."""
+        assert not hasattr(app.app.state.limiter, "degraded")  # type: ignore[attr-defined]
+        assert _value(_scrape(app), 'rag_quota_degraded_total{counter="ratelimit"}') == 0.0
+
+    def test_so_lan_tut_ve_di_thang_ra_bang(self, app: TestClient) -> None:
+        """⭐ Ghim **đường ánh xạ**, không ghim gauge. Một gauge được khai báo mà
+        không ai `set()` vẫn in ra 0 mãi mãi — và bảng sẽ báo "mọi thứ bình
+        thường" trong suốt một sự cố Redis."""
+
+        class _Gia:
+            degraded = 7
+
+        app.app.state.limiter = _Gia()  # type: ignore[attr-defined]
+        assert _value(_scrape(app), 'rag_quota_degraded_total{counter="ratelimit"}') == 7.0
+
+    def test_hai_bo_dem_la_hai_chuoi_thoi_gian(self, app: TestClient) -> None:
+        """Gộp chúng lại nghĩa là bảng không phân biệt được *"hạn mức đang N×"*
+        với *"trần chi phí đang N×"* — hai sự cố khác nhau, hai người phải gọi
+        khác nhau."""
+
+        class _Gia:
+            def __init__(self, n: int) -> None:
+                self.degraded = n
+
+        app.app.state.limiter = _Gia(3)  # type: ignore[attr-defined]
+        app.app.state.daily_spend = _Gia(11)  # type: ignore[attr-defined]
+        text = _scrape(app)
+        assert _value(text, 'rag_quota_degraded_total{counter="ratelimit"}') == 3.0
+        assert _value(text, 'rag_quota_degraded_total{counter="daily_spend"}') == 11.0

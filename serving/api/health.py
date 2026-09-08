@@ -157,6 +157,18 @@ def metrics(request: Request) -> Response:
     # dưới đang bị chia; không có dòng này thì không ai biết gì cả.
     bag.scrape_workers.set(_worker_count())
 
+    # `TD-39`: ánh xạ trạng thái suy giảm của hai bộ đếm dùng chung ra bảng.
+    # Không có dòng này thì "hạn mức đang đúng" và "hạn mức đang là N× số
+    # replica" trông **giống hệt nhau** từ bên ngoài — và cái thứ hai là một sự
+    # cố im lặng, đúng loại mà `rag_scrape_workers` ngay trên tồn tại để chống.
+    for ten, doi_tuong in (
+        ("ratelimit", getattr(request.app.state, "limiter", None)),
+        ("daily_spend", getattr(request.app.state, "daily_spend", None)),
+    ):
+        degraded = getattr(doi_tuong, "degraded", None)
+        if isinstance(degraded, int):
+            bag.quota_degraded.labels(counter=ten).set(degraded)
+
     sink = getattr(request.app.state, "trace_sink", None)
     status_of = getattr(sink, "status", None)
     if callable(status_of):

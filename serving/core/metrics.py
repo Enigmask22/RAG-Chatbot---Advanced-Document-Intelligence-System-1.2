@@ -263,6 +263,19 @@ class RagMetrics:
             ("version",),
             registry=reg,
         )
+        self.quota_degraded = Gauge(
+            "rag_quota_degraded_total",
+            "Số lần một bộ đếm dùng chung phải tụt về bản trong tiến trình "
+            "(Redis hỏng hoặc mạch đang mở). >0 nghĩa là trần đang là N× số "
+            "replica — xem TD-39.",
+            ("counter",),
+            registry=reg,
+        )
+        """⭐ Nhãn là **cơ chế** (`ratelimit` / `daily_spend`), không phải kết
+        cục. Gộp hai bộ đếm vào một con số nghĩa là bảng không phân biệt được
+        *"hạn mức đang N×"* với *"trần chi phí đang N×"* — hai sự cố khác nhau,
+        hai người phải gọi khác nhau. Cùng bài học đặt tên với
+        `refusals_suspected` (`W5-07`) và `result="single_flight"` (`NEW-10`)."""
         self.scrape_workers = Gauge(
             "rag_scrape_workers",
             "Số worker mà bản phơi bày này đại diện. >1 nghĩa là mọi con số "
@@ -306,8 +319,17 @@ class RagMetrics:
         đoán trước một danh sách sẽ sai, và mỗi lần đoán sai là một chuỗi thời
         gian ma nằm mãi trên bảng.
         """
-        for result in ("hit", "miss", "replay"):
+        # ⚠️ `single_flight` **thiếu ở đây từ `NEW-10` tới 08/09/2026**. Nhãn
+        # được thêm vào `MetricsSink` mà không thêm vào danh sách khai trước,
+        # nên tới lượt gộp đầu tiên `/metrics` không in dòng nào và ô trên bảng
+        # đọc *"No data"* — đúng hai-nghĩa mà hàm này tồn tại để tách ra. Thêm
+        # một nhãn là **hai** chỗ sửa, và chỗ thứ hai không có gì nhắc.
+        for result in ("hit", "miss", "replay", "single_flight"):
             self.cache_lookups.labels(result=result)
+        # `TD-39`: hai bộ đếm dùng chung, hai chuỗi thời gian. 0 nghĩa là
+        # "chưa phải tụt về bao giờ" — thứ cần đọc được ngay từ ngày đầu.
+        for counter in ("ratelimit", "daily_spend"):
+            self.quota_degraded.labels(counter=counter)
         for cited in ("yes", "no"):
             self.answers.labels(cited=cited)
         for rating in ("1", "-1"):

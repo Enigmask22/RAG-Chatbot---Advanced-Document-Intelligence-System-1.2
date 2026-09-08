@@ -218,8 +218,17 @@ class TestUnpriced:
             'rag_cache_lookups_total{result="replay"}',
             'rag_answers_total{cited="no"}',
             'rag_llm_unpriced_steps_total{step="rewrite"}',
+            # ⚠️ `single_flight` **thiếu ở đây từ `NEW-10` tới 08/09/2026**: nhãn
+            # được thêm vào `MetricsSink` mà không thêm vào `_declare_zero`, nên
+            # ô trên bảng đọc *"No data"* cho tới lượt gộp đầu tiên — đúng cái
+            # mập mờ mà bài test này tồn tại để chống. Thêm một nhãn là **hai**
+            # chỗ sửa, và chỗ thứ hai không có gì nhắc.
+            'rag_cache_lookups_total{result="single_flight"}',
+            # `TD-39`: 0 = "chưa phải tụt về bộ đếm cục bộ lần nào".
+            'rag_quota_degraded_total{counter="ratelimit"}',
+            'rag_quota_degraded_total{counter="daily_spend"}',
         ):
-            assert _value(text, series) == 0
+            assert _value(text, series) == 0, series
 
 
 # ---------------------------------------------------------------------------
