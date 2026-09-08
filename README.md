@@ -51,13 +51,13 @@ see [`security-final.md`](plans/reports/tasks/security-final.md) §5.
 
 | Phase | Done | Gate | Notes |
 |---|:---:|:---:|---|
-| **W0** · Setup & decisions | 3/6 | — | 2 in progress; rented-GPU items deferred |
+| **W0** · Setup & decisions | 3/8 | — | 2 in progress; rented-GPU items deferred |
 | **W1** · Foundations + eval baseline | **13/13** | 🟡 | conditional PASS — golden set is model-reviewed, not human-reviewed (`TD-13`) |
-| **W2** · Retrieval upgrade | **9/9** | 🟡 | end-to-end p95 now measured (`W6-05`); budget not met — see below |
+| **W2** · Retrieval upgrade | **10/10** | ✅ | latency criterion closed by decision (2026-09-08): the operating SLO is **TTFT p95 ≤ 2,000 ms at design load**; the 3,500 ms end-to-end line stays ❌ on purpose — see below |
 | **W3** · Ingestion + chunking | 8/9 | ⬜ | `W3-09` still open |
-| **W4** · Serving Plane | **13/13** | ✅ | API, auth, SSE, citations, cache, guardrails, Docker |
+| **W4** · Serving Plane | **13/13** | 🟨 | API, auth, SSE, citations, cache, guardrails, Docker; gate at 2.5/3 — the "clean clone ≤ 5 min" clause only holds with a warm cache (`TD-56`) |
 | **W5** · Full eval + observability | **11/11** | ✅ | generation eval, LLM judge + calibration, release gate, Langfuse, Prometheus, CI |
-| **W6** · Polish & presentation | 2/8 | ⬜ | load test + security pass done; web UI `[~]`; docs in progress |
+| **W6** · Polish & presentation | 6/8 | ⬜ | web UI and Space demo `[~]` — both wait on the demo going public; load test, security pass, upload gate, CV evidence, README done |
 
 **2,892 tests** — 2,351 unit · 382 integration (real Qdrant/Postgres/Redis) · 138
 security · 21 e2e (against the real compose stack and the real image). A default
@@ -145,6 +145,7 @@ and calibrated against 242 real requests:
 | | |
 |---|---:|
 | p95 end-to-end (real DeepSeek) | 4,842 ms |
+| **TTFT p95 — the operating SLO, ≤ 2,000 ms at design load** | **1,400 ms** @ u=1 · 2,200 @ u=2 · 4,300 @ u=8 |
 | Single-instance throughput ceiling | **1.33 req/s** |
 | Failed requests, all concurrency levels | **0** |
 
@@ -153,6 +154,12 @@ and calibrated against 242 real requests:
 * **The p95 budget of 3,500 ms is not reachable by optimising retrieval.**
   Removing retrieval and reranking *entirely* — an impossible configuration —
   still leaves 4,055 ms, because 84% of p95 is the provider generating tokens.
+  The budget was written before streaming existed and is dominated by answer
+  length — a property of the *question*. Decision (2026-09-08): the line stays
+  ❌ (replacing it would move the goalposts) and the **operating SLO is TTFT
+  p95 ≤ 2,000 ms at design load** — the number a user of a streaming API
+  actually feels, and the one sensitive to what we control. It is observable
+  in production as `rag_ttft_seconds` with a bucket edge exactly at 2.0 s.
 * **The throughput ceiling is one debt, not a vague scaling limit.** It equals
   91% of `1 / rerank_time`: as concurrency rises, `completion` stays flat at
   4.9 s across six levels while `rerank` walks 975 → 19,364 ms. The system does
@@ -160,7 +167,11 @@ and calibrated against 242 real requests:
 * **`c=50` is neither the best nor the fastest configuration** — it is the one
   being served. `c=100` scores higher, but `W2-08` measured that the gain is
   *coverage*, not ranking quality (nDCG and MAP move in the **opposite**
-  direction). `c=20` is 4.21× cheaper and is a live proposal (`NEW-09`).
+  direction). `c=20` was measured and **rejected** (`NEW-09`, 2026-09-08): it
+  buys 2.21× retrieval latency but *all 15 metrics* get worse with no CI
+  crossing zero — on the contextual-chunk bundle actually being served it keeps
+  only 54.8% of the recall@10 gain, not the 91% a sentence measured on a
+  different configuration promised.
 
 ---
 
@@ -217,7 +228,11 @@ flowchart LR
 `POST /chat` (SSE) · `GET /conversations/{id}` · `POST /feedback` ·
 `GET /health` · `GET /ready` · `GET /metrics` ·
 admin: `POST /admin/bundle/reload` · `POST /admin/bundle/rollback` ·
-`GET /admin/feedback` · `GET /admin/llm` · `GET /admin/tracing`.
+`GET /admin/feedback` · `GET /admin/llm` · `GET /admin/tracing` ·
+`POST /admin/ingest` + `GET /admin/ingest/{job}` (re-index + progress) ·
+`POST /admin/ingest/upload` (register a **public** document into the corpus —
+license allow-list and public source URL enforced at the gate; it reaches
+users only through a freshly built and measured bundle).
 
 Every data endpoint requires an API key. `/ready` is not a liveness probe: it
 returns 503 unless the bundle loaded, Qdrant answers, **and** the database is at

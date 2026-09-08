@@ -48,13 +48,13 @@ nào trả nổi giá, quy ước được dời vào mã và ghim bằng test �
 
 | Giai đoạn | Xong | Gate | Ghi chú |
 |---|:---:|:---:|---|
-| **W0** · Setup & quyết định | 3/6 | — | 2 đang làm; các mục cần GPU thuê hoãn lại |
+| **W0** · Setup & quyết định | 3/8 | — | 2 đang làm; các mục cần GPU thuê hoãn lại |
 | **W1** · Nền móng + baseline eval | **13/13** | 🟡 | PASS **có điều kiện** — golden set do model review, chưa phải người (`TD-13`) |
-| **W2** · Nâng cấp truy hồi | **9/9** | 🟡 | p95 đầu-cuối đã đo (`W6-05`); ngân sách **không** đạt — xem dưới |
+| **W2** · Nâng cấp truy hồi | **10/10** | ✅ | tiêu chí latency đóng bằng quyết định (08/09/2026): SLO vận hành là **TTFT p95 ≤ 2.000 ms ở tải thiết kế**; dòng đầu-cuối 3.500 ms giữ ❌ có chủ đích — xem dưới |
 | **W3** · Ingestion + chunking | 8/9 | ⬜ | còn `W3-09` |
-| **W4** · Serving Plane | **13/13** | ✅ | API, auth, SSE, trích dẫn, cache, guardrails, Docker |
+| **W4** · Serving Plane | **13/13** | 🟨 | API, auth, SSE, trích dẫn, cache, guardrails, Docker; gate 2,5/3 — vế "clone sạch ≤ 5 phút" chỉ đúng khi cache ấm (`TD-56`) |
 | **W5** · Eval đầy đủ + observability | **11/11** | ✅ | eval sinh, LLM judge + hiệu chuẩn, gate phát hành, Langfuse, Prometheus, CI |
-| **W6** · Hoàn thiện & trình bày | 2/8 | ⬜ | load test + security pass xong; web UI `[~]`; tài liệu đang làm |
+| **W6** · Hoàn thiện & trình bày | 6/8 | ⬜ | web UI và Space demo `[~]` — cả hai chờ demo lên public; load test, security pass, cửa upload, evidence CV, README xong |
 
 **2.892 test** — 2.351 unit · 382 integration (Qdrant/Postgres/Redis thật) · 138
 security · 21 e2e (trên stack compose thật và image thật). Một lượt `pytest` mặc
@@ -141,6 +141,7 @@ HTTP**, hiệu chỉnh theo 242 request thật:
 | | |
 |---|---:|
 | p95 đầu-cuối (DeepSeek thật) | 4.842 ms |
+| **TTFT p95 — SLO vận hành, ≤ 2.000 ms ở tải thiết kế** | **1.400 ms** @ u=1 · 2.200 @ u=2 · 4.300 @ u=8 |
 | Trần thông lượng một instance | **1,33 req/s** |
 | Request hỏng, mọi bậc đồng thời | **0** |
 
@@ -148,7 +149,12 @@ HTTP**, hiệu chỉnh theo 242 request thật:
 
 * **Ngân sách p95 3.500 ms không đạt được bằng cách tối ưu truy hồi.** Bỏ **toàn
   bộ** truy hồi và rerank — một cấu hình không tưởng — vẫn còn 4.055 ms, vì 84%
-  của p95 là thời gian nhà cung cấp sinh token.
+  của p95 là thời gian nhà cung cấp sinh token. Ngân sách ấy viết trước khi có
+  streaming và bị độ dài câu trả lời chi phối — một tính chất của *câu hỏi*.
+  Quyết định (08/09/2026): dòng này giữ ❌ (thay nó là dời cột gôn), và **SLO
+  vận hành là TTFT p95 ≤ 2.000 ms ở tải thiết kế** — con số người dùng một API
+  stream thật sự cảm thấy, và là con số nhạy với thứ ta điều khiển được. Quan
+  sát được trong production qua `rag_ttft_seconds`, bucket đúng tại 2,0 s.
 * **Trần thông lượng là **một** món nợ cụ thể, không phải một giới hạn mơ hồ.** Nó
   bằng 91% của `1 / thời-gian-rerank`: khi độ đồng thời tăng, `completion` đứng yên
   ở 4,9 s suốt sáu bậc trong khi `rerank` đi 975 → 19.364 ms. Hệ thống **không
@@ -156,7 +162,10 @@ HTTP**, hiệu chỉnh theo 242 request thật:
 * **`c=50` không phải cấu hình tốt nhất, cũng không nhanh nhất** — nó là cấu hình
   đang được phục vụ. `c=100` điểm cao hơn, nhưng `W2-08` đo được phần hơn ấy là
   **độ phủ**, không phải chất lượng xếp hạng (nDCG và MAP đi **ngược** chiều).
-  `c=20` rẻ hơn 4,21× và đang là một đề xuất còn mở (`NEW-09`).
+  `c=20` đã được đo và **bác bỏ** (`NEW-09`, 08/09/2026): nó mua 2,21× tốc độ
+  truy hồi nhưng *cả 15 metric* xấu đi, không CI nào loại trừ 0 — trên đúng
+  bundle chunk-ngữ-cảnh đang phục vụ, nó chỉ giữ 54,8% mức cải thiện recall@10,
+  không phải 91% như một câu đo trên cấu hình khác từng hứa.
 
 ---
 
@@ -213,7 +222,11 @@ flowchart LR
 `POST /chat` (SSE) · `GET /conversations/{id}` · `POST /feedback` ·
 `GET /health` · `GET /ready` · `GET /metrics` ·
 admin: `POST /admin/bundle/reload` · `POST /admin/bundle/rollback` ·
-`GET /admin/feedback` · `GET /admin/llm` · `GET /admin/tracing`.
+`GET /admin/feedback` · `GET /admin/llm` · `GET /admin/tracing` ·
+`POST /admin/ingest` + `GET /admin/ingest/{job}` (re-index + tiến độ) ·
+`POST /admin/ingest/upload` (đăng ký một tài liệu **công khai** vào corpus —
+danh sách license cho phép và URL nguồn công khai cưỡng chế tại cửa; tài liệu
+tới người dùng qua một bundle mới đã build và đo lại).
 
 Mọi endpoint dữ liệu đều đòi khoá API. `/ready` **không** phải liveness probe: nó
 trả 503 trừ khi bundle đã nạp, Qdrant trả lời, **và** database đang ở đúng
