@@ -49,10 +49,16 @@ class TestDungBaGoiCanDoc:
     def test_mac_dinh_doc_dung_MODEL_PACKAGES(self) -> None:
         assert set(library_versions()) == set(MODEL_PACKAGES)
 
-    def test_torch_va_transformers_co_that_trong_moi_truong_nay(self) -> None:
-        """Nhóm chứng: nếu hàm luôn trả `None` thì mọi bài trên vẫn xanh."""
-        ra = library_versions()
-        assert ra["torch"] and ra["transformers"], ra
+    # ⚠️⚠️ Ở đây từng có `test_torch_va_transformers_co_that_trong_moi_truong_nay`,
+    # khẳng định `ra["torch"]` khác `None`. Nó **đỏ trên CI**: tầng `unit`
+    # không cài `torch`. Bài ấy là "nhóm chứng" chống lại một hàm luôn trả
+    # `None` — và nó làm điều đó bằng cách **giả định một sự thật về môi
+    # trường**, tức đúng lớp lỗi nó tồn tại để chống, lần thứ tư trong ngày
+    # 08/09/2026 (`_drain_saves`, probe RSS, `quota_shared`, và đây).
+    #
+    # Nhóm chứng thật đã có sẵn ngay trên: `test_tron_goi_co_va_khong_co...`
+    # dùng `pytest`, gói **chắc chắn** có mặt ở bất kỳ môi trường nào đang chạy
+    # pytest. Bài kia không thêm gì ngoài một phụ thuộc môi trường.
 
 
 class TestKhaiODungCho:
