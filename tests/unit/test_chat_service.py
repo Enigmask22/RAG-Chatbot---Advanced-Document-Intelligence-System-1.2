@@ -710,6 +710,18 @@ async def test_a_cache_hit_replays_the_full_frame_set_without_the_llm() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_cache_replay_records_its_ttfb_for_the_slo() -> None:
+    """SLO TTFT (p95 ≤ 2 s, chốt 08/09/2026) đọc từ cây span (`MetricsSink`) —
+    lượt phát lại phải mang đúng con số mà khung `done` khai, nếu không bảng
+    và client kể hai chuyện khác nhau về cùng một lượt."""
+    turn = _cached_turn()
+    events = await _drain(_service(FakeLLM()), turn)
+
+    replay = next(s for s in turn.trace.spans if s.name == "cache.replay")
+    assert replay.metadata["ttfb_ms"] == _done_of(events)["ttfb_ms"]
+
+
+@pytest.mark.asyncio
 async def test_the_meta_frame_names_what_the_hit_matched() -> None:
     """Một hit sai (hai câu gần nhau nhưng khác đáp án) phải truy được từ
     CLIENT: khung meta mang câu đã khớp và độ giống, không giấu trong log."""

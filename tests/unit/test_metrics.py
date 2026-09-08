@@ -25,6 +25,7 @@ def _turn(
     verified: int = 2,
     claimed: int = 2,
     answer: str = "RRF hợp nhất thứ hạng [1].",
+    ttfb_ms: float | None = 843.21,
 ) -> Trace:
     """Một lượt hoàn chỉnh, cùng hình dạng span mà `chat.py` thật sự sinh ra."""
     trace = Trace(name="chat")
@@ -43,10 +44,13 @@ def _turn(
         outer.end(n_hits=hits)
     trace.span("prompt").end()
     generation = trace.span("completion", kind="generation")
+    # `chat.py` chỉ gán `ttfb_ms` khi có token đầu — lượt `empty` không có TTFT.
+    extra: dict[str, Any] = {} if ttfb_ms is None else {"ttfb_ms": ttfb_ms}
     generation.end(
         output=answer,
         model="deepseek-v4-flash",
         usage=Usage(prompt_tokens=1613, completion_tokens=48, cost_usd=cost),
+        **extra,
     )
     trace.span("citations").end(verified=verified, claimed=claimed)
     trace.metadata["finish_reason"] = outcome
@@ -278,6 +282,62 @@ class TestLabels:
         MetricsSink(first).submit(_turn())
         assert _value(_text(first), "rag_traces_finished_total") == 1
         assert _value(_text(second), "rag_traces_finished_total") == 0
+
+
+# ---------------------------------------------------------------------------
+# 4b. TTFT — SLO p95 ≤ 2 s (chốt 08/09/2026)
+# ---------------------------------------------------------------------------
+
+
+class TestTTFT:
+    """`rag_ttft_seconds` đọc `ttfb_ms` từ đúng hai span mang câu trả lời."""
+
+    def test_a_completion_with_a_first_token_feeds_the_histogram(
+        self, sink: MetricsSink, bag: RagMetrics
+    ) -> None:
+        """843,21 ms phải thành 0,84321 **giây** — quên chia 1000 thì mọi lượt
+        đều "vượt SLO" và panel đỏ vĩnh viễn, hoặc ngược lại nếu ai đó đổi đơn
+        vị ở `chat.py` mà không đổi ở đây."""
+        sink.submit(_turn(ttfb_ms=843.21))
+        text = _text(bag)
+        assert _value(text, "rag_ttft_seconds_count") == 1
+        assert _value(text, "rag_ttft_seconds_sum") == pytest.approx(0.84321)
+
+    def test_a_cache_replay_counts_toward_the_slo(self, sink: MetricsSink, bag: RagMetrics) -> None:
+        """SLO là của **người dùng**, không phải của model — lượt phát lại từ
+        cache là những lượt nhanh nhất và bỏ chúng ra là tự làm xấu p95."""
+        trace = Trace(name="chat")
+        trace.span("cache.replay").end(ttfb_ms=12.5)
+        trace.metadata["finish_reason"] = "cache"
+        trace.finish()
+        sink.submit(trace)
+        text = _text(bag)
+        assert _value(text, "rag_ttft_seconds_count") == 1
+        assert _value(text, "rag_ttft_seconds_sum") == pytest.approx(0.0125)
+
+    def test_an_empty_turn_has_no_ttft(self, sink: MetricsSink, bag: RagMetrics) -> None:
+        """Lượt không phát được byte nào (`finish_reason="empty"`) không có
+        "thời gian tới byte đầu" — ghi 0 vào histogram là khai một lượt tức
+        thời chưa từng xảy ra, và p50 tụt theo tỉ lệ lượt rỗng."""
+        sink.submit(_turn(outcome="empty", ttfb_ms=None))
+        assert _value(_text(bag), "rag_ttft_seconds_count") == 0
+
+    def test_a_stray_ttfb_on_another_span_is_not_counted(
+        self, sink: MetricsSink, bag: RagMetrics
+    ) -> None:
+        """Danh sách span đóng, không phải quét-mọi-khoá: một span tương lai
+        mượn tên `ttfb_ms` cho việc khác sẽ đếm một lượt thành hai."""
+        trace = _turn(ttfb_ms=500.0)
+        stray = trace.spans[-1]
+        assert stray.name == "citations"  # không phải span mang câu trả lời
+        stray.metadata["ttfb_ms"] = 99.0
+        sink.submit(trace)
+        assert _value(_text(bag), "rag_ttft_seconds_count") == 1
+
+    def test_the_histogram_has_a_bucket_exactly_at_the_slo(self, bag: RagMetrics) -> None:
+        """Panel "% lượt vượt SLO TTFT 2 s" **đếm** thay vì nội suy — chỉ đúng
+        khi bucket `le="2.0"` tồn tại."""
+        assert 'rag_ttft_seconds_bucket{le="2.0"}' in _text(bag)
 
 
 # ---------------------------------------------------------------------------

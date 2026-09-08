@@ -1136,6 +1136,9 @@ class ChatService:
                 output=cached.text,
                 model=cached.model,
                 similarity=cached.similarity,
+                # Cùng con số mà khung `done` vừa khai — SLO TTFT đọc từ đây
+                # (`MetricsSink`), và hai nguồn lệch nhau là thứ không truy được.
+                ttfb_ms=elapsed,
                 # ⚠️ **Không** khai `usage` cho lượt này. Một cache hit không
                 # tốn token, nhưng nó cũng không phải "$0 cho câu hỏi này" —
                 # câu trả lời ấy đã được trả tiền một lần ở lượt trước. Ghi 0

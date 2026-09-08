@@ -1079,6 +1079,109 @@
         },
         "overrides": []
       }
+    },
+    {
+      "type": "timeseries",
+      "title": "TTFT — p50 · p95 (SLO ≤ 2 s)",
+      "description": "Từ lúc nhận request tới byte đầu tiên người dùng thấy — SLO chốt 08/09/2026: p95 ≤ 2 s ở tải thiết kế (u ≤ 2). Đây là con số người dùng cảm thấy trên một API stream, và nó nhạy đúng với thứ ta điều khiển được (truy hồi + rerank + hàng đợi) — khác ngân sách end-to-end 3,5 s bị độ dài câu trả lời chi phối (W6-05).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 58
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "p50",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(rag_ttft_seconds_bucket[$__rate_interval])))"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(rag_ttft_seconds_bucket[$__rate_interval])))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 5
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 2.0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "% lượt vượt SLO TTFT 2 s",
+      "description": "Đếm được chứ không nội suy: bucket le=\"2.0\" tồn tại đúng vì đây là ngưỡng SLO (xem _DURATION_BUCKETS). Mẫu số là _count của chính rag_ttft_seconds — lượt không phát được byte nào (finish_reason=empty, lỗi ở prepare) không có TTFT và không vào đây.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rag-prom"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 5,
+        "x": 12,
+        "y": 58
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - (sum(rate(rag_ttft_seconds_bucket{le=\"2.0\"}[$__rate_interval])) / clamp_min(sum(rate(rag_ttft_seconds_count[$__rate_interval])), 0.0001))"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.05
+              },
+              {
+                "color": "red",
+                "value": 0.2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
     }
   ]
 }

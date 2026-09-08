@@ -162,6 +162,15 @@ class RagMetrics:
             buckets=_DURATION_BUCKETS,
             registry=reg,
         )
+        self.ttft = Histogram(
+            "rag_ttft_seconds",
+            "Từ lúc nhận request tới byte đầu tiên người dùng thấy. SLO: p95 ≤ 2 s "
+            "ở tải thiết kế (chốt 08/09/2026, thay cho ngân sách end-to-end 3,5 s "
+            "bị độ dài câu trả lời chi phối — xem W6-05). Bucket 2.0 tồn tại đúng "
+            "vì ngưỡng này.",
+            buckets=_DURATION_BUCKETS,
+            registry=reg,
+        )
         self.stage_duration = Histogram(
             "rag_stage_duration_seconds",
             "Thời lượng mỗi bước, đọc thẳng từ cây span của W5-06.",
@@ -443,6 +452,17 @@ class MetricsSink:
         # Một phép tiêm sống sót đã phơi ra chỗ này — nó "sống" vì đổi luật
         # thành *quét mọi span* gần như không đổi hành vi, và điều đó chỉ đúng
         # khi luật hiện tại đang bỏ sót gần hết những gì đáng quét.
+        # TTFT chỉ đọc từ span mang câu trả lời (`completion` khi có token đầu,
+        # `cache.replay` khi phát lại) — mỗi lượt đúng một span như vậy, nên mỗi
+        # lượt vào histogram đúng một lần. Quét mọi span có khoá `ttfb_ms` thì
+        # một span tương lai mượn tên khoá ấy cho việc khác sẽ đếm lượt hai lần.
+        # `ttfb_ms` là mili giây (khớp khung `done` client thấy); histogram tính
+        # bằng giây như mọi histogram thời lượng ở đây.
+        if name in _ANSWER_SPANS:
+            ttfb_ms = meta.get("ttfb_ms")
+            if isinstance(ttfb_ms, (int, float)) and not isinstance(ttfb_ms, bool):
+                m.ttft.observe(ttfb_ms / 1000.0)
+
         carries_answer = name in _ANSWER_SPANS and isinstance(span.output, str)
         if carries_answer and looks_like_refusal(span.output):
             m.refusals_suspected.inc()

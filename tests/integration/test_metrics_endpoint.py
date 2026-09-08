@@ -237,6 +237,18 @@ class TestFromTheSpanTree:
         for stage in ("understand", "retrieval", "retrieve.hybrid", "rerank", "completion"):
             assert f'rag_stage_duration_seconds_count{{stage="{stage}"}}' in text, stage
 
+    def test_the_first_token_of_a_real_turn_lands_in_the_ttft_histogram(
+        self, app: TestClient
+    ) -> None:
+        """Chốt **đường dây**, không chỉ phép đếm: `chat.py` gán `ttfb_ms` lúc
+        token đầu rời đi, span `completion` mang nó tới `MetricsSink`, và SLO
+        p95 ≤ 2 s (chốt 08/09/2026) đọc được từ `/metrics` thật. Unit test
+        không thấy được việc nối dây này — cùng bài học `M1` của `TD-74`."""
+        _ask(app, key=KEY)
+        text = _scrape(app)
+        assert _value(text, "rag_ttft_seconds_count") == 1
+        assert 'rag_ttft_seconds_bucket{le="2.0"}' in text
+
     def test_only_the_outermost_retrieval_span_feeds_the_hit_histogram(
         self, app: TestClient
     ) -> None:
