@@ -25,8 +25,8 @@ cross-encoder `bge-reranker-v2-m3` trên ZeroGPU → sinh bằng `deepseek-v4-fl
 
 Model bắt buộc phải trích dẫn `[n]` kèm nguyên văn. Máy chủ đối chiếu từng
 trích dẫn với **đúng chunk mà `n` chỉ vào** — trích dẫn đúng nguyên văn nhưng
-gán sai số nguồn vẫn là `verified: false`. Dấu ✅ ở bảng nguồn là phán quyết
-của máy chủ, không phải lời của model.
+gán sai số nguồn vẫn là `verified: false`. Nhãn *trích dẫn đã xác minh* ở bảng
+nguồn là phán quyết của máy chủ, không phải lời của model.
 
 ## Đây có phải hệ thống thật không
 

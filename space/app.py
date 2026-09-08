@@ -182,16 +182,17 @@ def _sources_markdown(sources: list[dict[str, Any]], citations: dict[str, Any] |
     lines = []
     for src in sources:
         n = src["n"]
-        badge = " ✅ trích dẫn đã xác minh" if src.get("chunk_id") in verified_chunks else ""
+        # Không dùng emoji: nhãn xác minh là chữ, phần trang trí để CSS lo.
+        badge = " · **trích dẫn đã xác minh**" if src.get("chunk_id") in verified_chunks else ""
         flags = src.get("flags") or []
-        warn = f" ⚠️ cờ tiêm: {', '.join(flags)}" if flags else ""
+        warn = f" · **cờ tiêm: {', '.join(flags)}**" if flags else ""
         title = src.get("title") or src.get("doc_id")
         url = src.get("source_url")
         head = f"**[{n}]** {title}" if not url else f"**[{n}]** [{title}]({url})"
         body = (src.get("content") or "").strip()
         if len(body) > 700:
             body = body[:700] + " …"
-        lines.append(f"{head} · điểm {src['score']:.4f}{badge}{warn}\n\n```text\n{body}\n```")
+        lines.append(f"{head} — điểm {src['score']:.4f}{badge}{warn}\n\n```text\n{body}\n```")
     return "\n\n".join(lines)
 
 
@@ -209,16 +210,25 @@ def _stats_markdown(done: dict[str, Any], meta: dict[str, Any]) -> str:
     if usage.get("cost_usd") is not None:
         bits.append(f"${usage['cost_usd']:.6f}")
     if done.get("language_mismatch"):
-        bits.append("⚠️ trả lời **sai ngôn ngữ** so với câu hỏi")
+        bits.append("trả lời **sai ngôn ngữ** so với câu hỏi")
     return " · ".join(bits)
 
 
-def _quota_markdown() -> str:
+def _quota_html() -> str:
+    """Chip trạng thái ở topbar. Toàn bộ đầu vào là số đếm của `GUARD` —
+    không có chữ nào của người dùng hay của model đi qua đây, nên `gr.HTML`
+    là an toàn. Đèn trạng thái là một chấm CSS, không phải emoji."""
     snap = GUARD.snapshot()
-    state = "🔴 đang tắt" if snap["tripped"] else "🟢 đang mở"
+    state_cls, state_text = ("off", "tạm khoá") if snap["tripped"] else ("on", "đang mở")
     return (
-        f"Sinh câu trả lời: {state} · đã dùng **{snap['used_today']}/{snap['daily_total']}** "
-        f"câu hôm nay (trần chi phí ~**${snap['max_usd_per_day']}/ngày**)"
+        '<div class="quota">'
+        f'<span class="dot {state_cls}"></span>'
+        f"<span>sinh câu trả lời {state_text}</span>"
+        '<span class="sep">·</span>'
+        f"<span>{snap['used_today']}/{snap['daily_total']} câu hôm nay</span>"
+        '<span class="sep">·</span>'
+        f"<span>trần ~${snap['max_usd_per_day']}/ngày</span>"
+        "</div>"
     )
 
 
@@ -231,11 +241,11 @@ async def answer(
     question = (question or "").strip()
     history = list(history or [])
     if not question:
-        yield history, "", "", _quota_markdown()
+        yield history, "", "", _quota_html()
         return
 
     history = [*history, {"role": "user", "content": question}]
-    yield history, "_đang truy hồi…_", "", _quota_markdown()
+    yield history, "_đang truy hồi…_", "", _quota_html()
 
     client = client_key_of(getattr(request, "headers", None), _host_of(request))
     # ⚠️ Xin phép TRƯỚC khi chạm model, và `commit` là nguyên tử — xem quyết
@@ -253,7 +263,7 @@ async def answer(
                 ),
             }
         )
-        yield history, "", "", _quota_markdown()
+        yield history, "", "", _quota_html()
         return
 
     turn = await SERVICE.prepare(DEMO_PRINCIPAL, question=question, conversation_id=None)
@@ -264,8 +274,8 @@ async def answer(
         # ⭐ Từ chối **sinh**, không từ chối **truy hồi**: truy hồi không tốn
         # tiền, và một người chạm trần vẫn xem được hệ thống tìm ra gì. Đó là
         # phần đáng xem nhất của một demo RAG.
-        history.append({"role": "assistant", "content": f"⛔ {verdict.reason}"})
-        yield history, sources_md, "", _quota_markdown()
+        history.append({"role": "assistant", "content": verdict.reason})
+        yield history, sources_md, "", _quota_html()
         return
 
     history.append({"role": "assistant", "content": ""})
@@ -280,17 +290,17 @@ async def answer(
         elif event.event == "delta":
             text += event.data.get("text", "")
             history[-1]["content"] = text
-            yield history, sources_md, "", _quota_markdown()
+            yield history, sources_md, "", _quota_html()
         elif event.event == "citations":
             citations = dict(event.data)
             sources_md = _sources_markdown(sources, citations)
         elif event.event == "error":
-            history[-1]["content"] = text + f"\n\n⚠️ {event.data.get('message', 'lỗi không rõ')}"
-            yield history, sources_md, "", _quota_markdown()
+            history[-1]["content"] = text + f"\n\nLỗi: {event.data.get('message', 'lỗi không rõ')}"
+            yield history, sources_md, "", _quota_html()
         elif event.event == "done":
-            yield history, sources_md, _stats_markdown(dict(event.data), meta), _quota_markdown()
+            yield history, sources_md, _stats_markdown(dict(event.data), meta), _quota_html()
             return
-    yield history, sources_md, "", _quota_markdown()
+    yield history, sources_md, "", _quota_html()
 
 
 def _host_of(request: gr.Request) -> str | None:
@@ -314,8 +324,8 @@ thuộc World Bank, demo này chỉ phân phối lại.
 Truy hồi **hybrid** (BGE-M3 dense + sparse, hợp nhất RRF) rồi xếp lại bằng
 cross-encoder `bge-reranker-v2-m3` trên ZeroGPU; sinh bằng `deepseek-v4-flash`.
 Mọi câu trả lời phải trích dẫn `[n]`, và **máy chủ tự đối chiếu** từng trích dẫn
-với đúng chunk nó chỉ vào — dấu ✅ ở bảng nguồn là phán quyết của máy chủ, không
-phải lời của model.
+với đúng chunk nó chỉ vào — nhãn *trích dẫn đã xác minh* ở bảng nguồn là phán
+quyết của máy chủ, không phải lời của model.
 
 Mã nguồn, số đo eval và báo cáo từng hạng mục:
 **[github.com/Enigmask22/RAG-Chatbot](https://github.com/Enigmask22/RAG-Chatbot)**
@@ -328,28 +338,132 @@ theo ngày cộng trần theo khách; trần theo khách **giả được** bằ
 điều đó được nói ra thay vì giấu.
 """
 
-with gr.Blocks(title="RAG platform — demo", fill_height=True) as demo:
-    gr.Markdown("## RAG platform — hỏi đáp có trích dẫn xác minh được")
-    quota = gr.Markdown(_quota_markdown())
+#: Toàn bộ "thiết kế" nằm ở đây, không ở component: chữ IBM Plex (sans cho
+#: giao diện, mono cho số đo), một màu nhấn duy nhất, đèn trạng thái là chấm
+#: CSS thay cho emoji, và footer mặc định của Gradio được ẩn đi. Màu chữ/viền
+#: đi qua biến của Gradio (`--body-text-color…`, `--border-color-primary`) nên
+#: theme sáng/tối đều tự đúng mà không cần hai bảng màu.
+CSS = """
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root { --app-accent: #0e9382; }
+
+.gradio-container {
+  font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif !important;
+  max-width: 1220px !important;
+  margin: 0 auto !important;
+}
+footer { display: none !important; }
+
+#topbar {
+  border-bottom: 1px solid var(--border-color-primary);
+  padding: 4px 0 14px;
+  margin-bottom: 8px;
+  align-items: flex-end;
+}
+.brand-row { display: flex; align-items: center; gap: 10px; }
+.brand-mark {
+  width: 11px; height: 11px; display: inline-block;
+  background: var(--app-accent); transform: rotate(45deg); border-radius: 2px;
+}
+.brand-name {
+  font-size: 21px; font-weight: 650; letter-spacing: -0.02em;
+  color: var(--body-text-color);
+}
+.brand-tag {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--app-accent);
+  border: 1px solid var(--app-accent); border-radius: 999px; padding: 2px 9px;
+}
+.brand-sub { margin-top: 5px; font-size: 13.5px; color: var(--body-text-color-subdued); }
+
+.quota {
+  display: flex; justify-content: flex-end; align-items: center; gap: 8px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 12.5px; color: var(--body-text-color-subdued); padding-bottom: 3px;
+}
+.quota .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.quota .dot.on { background: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, .18); }
+.quota .dot.off { background: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, .18); }
+.quota .sep { opacity: .5; }
+
+.panel-label {
+  font-size: 11px; font-weight: 600; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--body-text-color-subdued);
+  margin: 2px 0 6px 2px;
+}
+#src-col {
+  border: 1px solid var(--border-color-primary);
+  border-radius: 12px; padding: 14px 16px !important; align-self: stretch;
+}
+#sources { max-height: 660px; overflow-y: auto; }
+#sources pre, #sources code { font-size: 12px; }
+
+#stats, #stats * {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace !important;
+  font-size: 12px !important; color: var(--body-text-color-subdued) !important;
+}
+
+#examples button {
+  border-radius: 999px; font-size: 13px;
+  width: auto; max-width: calc(50% - 4px);
+}
+#examples button .gallery {
+  white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis;
+}
+#examples > .gallery { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; }
+#examples .label svg { display: none; }
+#examples .label {
+  font-size: 11px; font-weight: 600; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--body-text-color-subdued);
+}
+"""
+
+BRAND_HTML = """
+<div id="brand">
+  <div class="brand-row">
+    <span class="brand-mark"></span>
+    <span class="brand-name">RAG Platform</span>
+    <span class="brand-tag">demo công khai</span>
+  </div>
+  <div class="brand-sub">Hỏi đáp trên 60 báo cáo World Bank về Việt Nam —
+  mọi trích dẫn được máy chủ đối chiếu với nguyên văn nguồn</div>
+</div>
+"""
+
+with gr.Blocks(title="RAG Platform — demo", fill_height=True, css=CSS) as demo:
+    with gr.Row(elem_id="topbar"):
+        gr.HTML(BRAND_HTML)
+        # Chip trạng thái: gr.HTML vì _quota_html chỉ chứa số đếm của GUARD —
+        # không có chữ của người dùng hay của model. Mọi bồn chứa nội dung
+        # không tin được vẫn là Markdown + sanitize bên dưới.
+        quota = gr.HTML(_quota_html())
     with gr.Row():
         with gr.Column(scale=3):
             # ⚠️ `sanitize_html` khai TƯỜNG MINH dù mặc định đã là True. Đây
             # là nơi chữ của model đi ra màn hình, và một mặc định là thứ đổi
             # được ở phiên bản sau mà không ai đọc changelog — `W6-01` đã đặt
             # cùng luật này cho trang HTML dưới dạng "không bao giờ innerHTML".
-            chatbot = gr.Chatbot(height=430, sanitize_html=True)
+            chatbot = gr.Chatbot(height=460, sanitize_html=True, show_label=False, elem_id="chat")
             box = gr.Textbox(
                 placeholder="Hỏi bằng tiếng Việt hoặc tiếng Anh…",
                 show_label=False,
                 submit_btn=True,
+                elem_id="ask",
             )
-            stats = gr.Markdown("")
-            gr.Examples(examples=EXAMPLES, inputs=box, cache_examples=False)
-        with gr.Column(scale=2):
-            gr.Markdown("### Nguồn đã đưa cho model")
+            stats = gr.Markdown("", elem_id="stats")
+            gr.Examples(
+                examples=EXAMPLES,
+                inputs=box,
+                cache_examples=False,
+                label="Câu hỏi mẫu",
+                elem_id="examples",
+            )
+        with gr.Column(scale=2, elem_id="src-col"):
+            gr.HTML('<div class="panel-label">Nguồn đã đưa cho model</div>')
             # ⚠️⚠️ Đây là bồn chứa nguy hiểm nhất của trang: nội dung chunk
             # corpus, thứ mà chính khung `sources` gắn cờ tiêm. Khai tường minh.
-            sources_view = gr.Markdown("_Chưa có lượt nào._", sanitize_html=True)
+            sources_view = gr.Markdown("_Chưa có lượt nào._", sanitize_html=True, elem_id="sources")
     with gr.Accordion("Về hệ thống này", open=False):
         gr.Markdown(ABOUT)
 

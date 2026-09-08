@@ -299,6 +299,76 @@ class TestPhanQuyetLintKhongDuocPhuThuocVaoViecDaCHAYAppChuaChua:
         assert "space" in config["tool"]["mypy"]["files"]
 
 
+def _ui_string_literals() -> list[str]:
+    """Mọi string literal của `app.py` TRỪ docstring.
+
+    Chữ đi ra mặt người dùng đều là literal (kể cả phần tĩnh của f-string —
+    `ast.walk` thấy các mảnh `Constant` bên trong `JoinedStr`). Docstring và
+    chú thích thì không phải giao diện: nhà của chúng là người đọc mã, và quy
+    ước ⚠️/⭐ của repo này sống ở đó — nên chúng được trừ ra bằng cách bỏ
+    Constant đứng làm câu lệnh đầu của module/class/def, thay vì cấm cả file.
+    """
+    import ast
+
+    tree = ast.parse((SPACE / "app.py").read_text(encoding="utf-8"))
+    docstrings: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            body = getattr(node, "body", [])
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
+                docstrings.add(id(body[0].value))
+    return [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in docstrings
+    ]
+
+
+class TestGiaoDienKhongDungEmoji:
+    """Nâng cấp UI 2026-09-08: đèn trạng thái là chấm CSS, nhãn xác minh là
+    chữ. Emoji trong chuỗi giao diện là thứ dễ mọc lại nhất — mỗi chỗ hiển thị
+    mới là một cám dỗ gõ ✅ — nên lệnh cấm phải là một bài test, không phải
+    một dòng trong report."""
+
+    FORBIDDEN = "🟢🔴⛔✅❌⚠️⭐💡🚀🧡"
+
+    def test_khong_co_emoji_trong_chuoi_giao_dien(self) -> None:
+        for text in _ui_string_literals():
+            hit = [ch for ch in text if ch in self.FORBIDDEN]
+            assert not hit, f"emoji {hit} trong chuỗi giao diện: {text[:80]!r}"
+
+    def test_nhom_chung_bo_thu_thap_that_su_nhin_thay_chuoi(self) -> None:
+        """Nhóm chứng kiểu `W6-07`: bài trên xanh vì sạch emoji, hay vì bộ thu
+        thập trả về rỗng? Ghim một chuỗi giao diện có thật để phân biệt."""
+        literals = _ui_string_literals()
+        assert "_Chưa có lượt nào._" in literals
+        assert any("```text" in lit for lit in literals), (
+            "mảnh tĩnh của f-string phải được nhìn thấy — code fence nằm ở đó"
+        )
+
+    def test_den_trang_thai_la_cham_css_hai_trang_thai(self) -> None:
+        """Chip quota phân biệt mở/khoá bằng class `on`/`off` — CSS phải có cả
+        hai, thiếu một cái là hai trạng thái trông y nhau."""
+        text = (SPACE / "app.py").read_text(encoding="utf-8")
+        assert ".quota .dot.on" in text and ".quota .dot.off" in text
+
+    def test_footer_mac_dinh_cua_gradio_bi_an(self) -> None:
+        """Footer "Built with Gradio · Use via API · Settings" là dấu vết
+        template rõ nhất của trang — CSS phải tắt nó."""
+        text = (SPACE / "app.py").read_text(encoding="utf-8")
+        import re as _re
+
+        match = _re.search(r"footer\s*\{[^}]*display:\s*none", text)
+        assert match, "CSS thiếu luật ẩn footer mặc định của Gradio"
+
+
 class TestBundleGuiDiKhopConTro:
     def test_manifest_cua_bundle_CURRENT_khai_dung_phien_ban_do(self) -> None:
         """Cửa 4 — `NEW-13` là bài học về hai nguồn sự thật cho một con số."""

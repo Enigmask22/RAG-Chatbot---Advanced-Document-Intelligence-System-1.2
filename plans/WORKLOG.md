@@ -5265,3 +5265,44 @@ hôm qua được kiểm chứng. Đóng nốt vòng bị giờ-tắt-máy cắt
 
 e2e 21/21 xanh sau sửa. Chi phí thật (đọc từ bộ đếm `spend:*` trong Redis):
 $0,0045 — vài lời gọi DeepSeek của các lượt không trúng cache.
+
+---
+
+## Phiên 2026-09-08 (24) · `NEW-15` — UI Space demo theo yêu cầu người dùng, và CV được đối chiếu với repo
+
+Hai việc, cùng một khách hàng cuối: nhà tuyển dụng.
+
+**CV (`main.tex`, ngoài repo).** Người dùng hỏi ba câu: khớp không, đứng được
+khi phỏng vấn không, dài dòng không. Đối chiếu từng con số với repo: phần lớn
+khớp đến chữ số — nhưng **hai câu bị vặn là gãy**, và cả hai được sửa theo yêu
+cầu: (1) "14-configuration ablation showed RRF k=60 was the worst option
+tested" ghép phát hiện của k-sweep `W2-04` vào bảng ablation — trong chính
+bảng ấy ô tệ nhất là baseline dense 0,1621, không phải k60 0,4313; tách lại
+đúng nguồn, kèm p=0,014. (2) "faithfulness/citation/refusal — gating every
+merge in CI" quá lời: CI chỉ có smoke-eval truy hồi ($0), nightly có full
+retrieval + gate, còn tầng sinh là `TD-83` **chưa vào CI** — `nightly.yml` tự
+ghi câu đó. Viết lại thành "replayable from a frozen judge cache for $0, while
+retrieval quality gates every merge in CI". Cũng nâng "2,900+ tests" → 3,100+
+(thật: 3.119). ⚠️ Còn hai link chết chờ người dùng: repo GitHub + Space đều
+chưa public.
+
+**`NEW-15` (UI Space).** Yêu cầu: chuyên nghiệp, non-AI-generate, không icon
+tự sinh. Chẩn đoán ba dấu vết: emoji làm đồ hoạ (🟢✅⛔), template Gradio
+nguyên khối (footer, nhãn component), không hệ thống thị giác. Sửa toàn bộ ở
+tầng trình bày `space/app.py`: topbar wordmark + chip trạng thái chấm CSS, IBM
+Plex Sans/Mono, footer ẩn, nhãn xác minh bằng chữ, panel nguồn đóng khung,
+chip câu hỏi mẫu 2 cột. Không đụng hàng rào `W6-02` (sanitize tường minh,
+code fence; `gr.HTML` chỉ cho chuỗi thuần số đếm của GUARD).
+
+Bài học đáng tiền của phiên: **CSS đúng và có hiệu lực vẫn thua một thuộc tính
+của phần tử con** — `#examples > .gallery` flex-row đã áp (computed style xác
+nhận) mà chip vẫn xếp dọc, vì Gradio đóng cứng `width: 405px` trên từng nút.
+Ba vòng Playwright trên app chạy thật (gradio local 6.26.0 = đúng bản Space)
+là thứ bắt được nó; một CSS "hợp lý" commit chay sẽ mang nguyên lỗi lên Space.
+
+Test: 4 bài mới trong `test_space_assets.py` — cấm 10 emoji trong **string
+literal ngoài docstring** (soi AST, không soi văn bản: docstring là nhà của
+quy ước ⚠️/⭐; và có nhóm chứng ghim chuỗi thật để bài cấm không xanh nhờ bộ
+thu thập rỗng). Tiêm 6/6 đỏ, trong đó M6 chứng minh bài sanitize cũ còn răng
+trên layout mới. Chi phí: ~$0,001 (một lượt sinh thật để chụp lượt hỏi-đáp có
+trích dẫn — xác nhận nhãn xác minh, stats mono, quota nhảy 0→1/500).
