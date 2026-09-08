@@ -116,11 +116,25 @@ columns are directly comparable.
 Scored on the same answer run, by an LLM judge calibrated against hand labels —
 Cohen's κ vs human **0.7368** ([`judge-calibration.md`](plans/reports/tasks/judge-calibration.md)).
 
-| Metric | Value |
-|---|---:|
-| Faithfulness | **0.9877** |
-| Citation coverage | 0.6186 |
-| Answer relevancy | 0.7479 |
+The "before" column is honest rather than flattering: the POC had **no
+evaluation harness at all**, so these numbers were never measured — which is
+itself the before state worth recording.
+
+| Metric | POC baseline | Current | Target |
+|---|---:|---:|---:|
+| Faithfulness (cited claims, n=407) | *never measured* | **0.9877** | ≥ 0.92 ✅ |
+| Citation accuracy (quote level, n=396) | *never measured* | **0.8662** | ≥ 0.85 ✅ |
+| Refusal correctness (220/242) | *never measured* | **0.9091** | ≥ 0.85 ✅ |
+| Citation coverage | *never measured* | 0.6186 | — |
+| Answer relevancy | *never measured* | 0.7479 | — |
+
+*Citation accuracy is the post-`NEW-08` rescore of the same 396 quotes — the
+earlier 0.8308 contained 19 false rejections by the quote matcher (ellipses
+treated as fabricated quotes); fixing the matcher rescued 14, dropped 0
+([`probes/new08-td64-rescore.json`](plans/reports/probes/new08-td64-rescore.json)).
+Answer relevancy is scored by a judge that has **not** been calibrated against
+human labels (`TD-68`) — read it as a trend, not a verdict. Faithfulness's
+judge has κ = 0.7368 vs human.*
 
 ### Serving
 

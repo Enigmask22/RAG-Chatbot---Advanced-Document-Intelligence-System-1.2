@@ -112,11 +112,25 @@ Chấm trên cùng một answer run, bằng một LLM judge đã hiệu chuẩn 
 Cohen's κ so với người **0,7368**
 ([`judge-calibration.md`](plans/reports/tasks/judge-calibration.md)).
 
-| Metric | Giá trị |
-|---|---:|
-| Faithfulness | **0,9877** |
-| Citation coverage | 0,6186 |
-| Answer relevancy | 0,7479 |
+Cột "before" trung thực thay vì đẹp mắt: bản POC **không có eval harness
+nào**, nên các con số này chưa từng được đo — và chính điều đó là trạng thái
+"trước" đáng ghi lại.
+
+| Metric | POC baseline | Hiện tại | Mục tiêu |
+|---|---:|---:|---:|
+| Faithfulness (mệnh đề có trích nguồn, n=407) | *chưa từng đo* | **0,9877** | ≥ 0,92 ✅ |
+| Citation accuracy (cấp quote, n=396) | *chưa từng đo* | **0,8662** | ≥ 0,85 ✅ |
+| Refusal correctness (220/242) | *chưa từng đo* | **0,9091** | ≥ 0,85 ✅ |
+| Citation coverage | *chưa từng đo* | 0,6186 | — |
+| Answer relevancy | *chưa từng đo* | 0,7479 | — |
+
+*Citation accuracy là lần chấm lại sau `NEW-08` trên cùng 396 quote — con số
+0,8308 cũ chứa 19 lần matcher từ chối oan (dấu lược `...` bị coi là quote bịa);
+sửa matcher cứu được 14, rớt 0
+([`probes/new08-td64-rescore.json`](plans/reports/probes/new08-td64-rescore.json)).
+Answer relevancy chấm bởi một judge **chưa** hiệu chuẩn với nhãn người
+(`TD-68`) — đọc nó như một xu hướng, không phải một phán quyết. Judge của
+faithfulness có κ = 0,7368 so với người.*
 
 ### Phục vụ
 
