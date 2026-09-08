@@ -49,6 +49,7 @@ from rag_core.llm import (
 )
 from rag_core.settings import Settings, get_settings
 from serving.api import admin, chat, feedback, health, ingest, ui
+from serving.api.body_limit import BodyLimitMiddleware
 from serving.api.middleware import RequestContextMiddleware
 from serving.api.security import AuthMiddleware
 from serving.core.auth import ApiKeyStore
@@ -536,6 +537,12 @@ def create_app(
     # truy được. Có test ghim (`test_a_401_still_carries_a_request_id`).
     api.state.keys = ApiKeyStore.load(resolved.api_keys_file)
     api.state.limiter = RateLimiter()
+    # `NEW-12` — thêm **trước** auth, tức nằm **trong** nó. Xem docstring
+    # `body_limit.py`: `AuthMiddleware` quyết định hoàn toàn bằng header và
+    # không chạm `receive`, nên với một thân 200 MB **không khoá** nó từ chối
+    # rẻ hơn phép đếm byte — và không tiết lộ con số trần cho người chưa xác
+    # thực. Phép từ chối rẻ nhất phải ra ngoài nhất.
+    api.add_middleware(BodyLimitMiddleware, max_bytes=resolved.max_body_bytes)
     api.add_middleware(AuthMiddleware, keys=api.state.keys, limiter=api.state.limiter)
     # ASGI thuần, không `BaseHTTPMiddleware` — lý do ở docstring của
     # `middleware.py`, nó liên quan trực tiếp tới SSE của `W4-06`.

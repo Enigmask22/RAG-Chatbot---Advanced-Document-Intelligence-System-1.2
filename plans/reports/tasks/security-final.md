@@ -300,11 +300,27 @@ là **`127.0.0.1`**, và `W6-02` là lúc giả định ấy chết.
 | `/ready` | công khai — lộ **tên phiên bản bundle** | chấp nhận được sau LB; xem lại nếu ra Internet |
 | `/docs`, `/openapi.json` | **cần khoá** | giữ nguyên |
 | Hạn mức nhịp | chỉ tính **sau** xác thực (`TD-39`) | request không khoá đi qua tự do ⇒ cần chặn theo IP ở reverse proxy |
-| Kích thước thân request | không trần (ngoài trần từng trường) | đặt `client_max_body_size` ở proxy |
+| Kích thước thân request | ~~không trần~~ → **1 MiB, `BodyLimitMiddleware`** (`NEW-12`) | proxy vẫn cần cho ca nhỏ giọt nhiều kết nối |
 
-⚠️ Dòng cuối là lỗ duy nhất `W6-06` **không** đóng được trong mã: Pydantic chỉ
-thấy thân request **sau** khi nó đã được đọc trọn vào bộ nhớ. `SEC-04` đóng trục
-`filters`, nhưng trần thật phải ở tầng trước ứng dụng.
+~~⚠️ Dòng cuối là lỗ duy nhất `W6-06` **không** đóng được trong mã…~~
+
+⭐⭐ **Câu ấy sai, và `NEW-12` (08/09/2026) đo ra chỗ sai.** Vế *"Pydantic chỉ
+thấy thân request sau khi nó đã được đọc trọn vào bộ nhớ"* đúng; vế *"không đóng
+được trong mã"* thì không — nó đúng với **Pydantic**, không đúng với **ASGI**.
+Một middleware ASGI thuần chạy dưới tầng ấy và kéo RSS đỉnh của một `POST`
+200 MB từ **852,3 MB xuống 55,0 MB** (nền 54,7 MB), tức về đúng 0 mức tăng.
+
+⚠️ Và hàng ấy còn ghi *"ngoài trần từng trường"* như một giảm nhẹ một phần. Đo
+được: trần từng trường **khuếch đại** — 852 MB là 4,3× payload và **cao hơn**
+đường không có Pydantic (421 MB), vì nhánh 422 dựng thêm bản giải mã JSON và
+thông điệp lỗi.
+
+⭐⭐ **`SEC-04` cũng chỉ đóng một nửa.** `MAX_FILTER_VALUES = 100` chặn **số
+lượng** giá trị, không chặn **độ dài** từng giá trị: một thân
+`{"filters": {"chunk_id": [<1 MB> × 100]}}` = **100.048.510 byte** đi qua *mọi*
+phép kiểm hệ có trước `NEW-12`. Đó là chế độ hỏng cố hữu của hàng rào
+đếm-theo-trường — nó buộc người viết liệt kê đúng và đủ mọi trục. Trần tính bằng
+**byte của cả thân** không phải liệt kê gì. Chi tiết: `tasks/new-12-body-limit.md`.
 
 ---
 

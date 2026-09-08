@@ -125,6 +125,68 @@ def test_a_401_still_carries_a_request_id(app_with_keys: TestClient) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 1b. `NEW-12` — trần thân request, và **vị trí** của nó trong chồng
+# ---------------------------------------------------------------------------
+
+
+def _than_qua_tran() -> bytes:
+    from rag_core.settings import Settings as _S
+
+    return b"x" * (_S().max_body_bytes + 1)
+
+
+def test_than_qua_tran_bi_tu_choi_413(app_with_keys: TestClient) -> None:
+    response = app_with_keys.post("/chat", content=_than_qua_tran(), headers=bearer(TENANT_KEY))
+    assert response.status_code == 413
+
+
+def test_413_van_mang_request_id(app_with_keys: TestClient) -> None:
+    """Nửa **trong** của quyết định vị trí: trần nằm dưới
+    `RequestContextMiddleware`, nên 413 truy vết được như mọi phản hồi khác.
+    Cùng ràng buộc với `test_a_401_still_carries_a_request_id` ngay trên."""
+    response = app_with_keys.post("/chat", content=_than_qua_tran(), headers=bearer(TENANT_KEY))
+    assert response.headers["x-request-id"]
+
+
+def test_khong_khoa_thi_401_chu_khong_phai_413(app_with_keys: TestClient) -> None:
+    """⭐⭐ Nửa **ngoài** của quyết định vị trí, và bản đầu làm ngược.
+
+    `AuthMiddleware` quyết định hoàn toàn bằng header và không chạm `receive`,
+    nên nó từ chối một thân 200 MB **không khoá** sau 0 byte, trong khi trần
+    phải đếm tới `max_bytes` mới biết. Phép từ chối rẻ hơn phải ra ngoài hơn —
+    và 413 trước 401 còn tiết lộ con số trần cho người chưa xác thực.
+    """
+    response = app_with_keys.post("/chat", content=_than_qua_tran())
+    assert response.status_code == 401
+
+
+def test_duong_cong_khai_van_duoc_tran_phu(app_with_keys: TestClient) -> None:
+    """Hệ quả phải kiểm của việc đặt trần **trong** auth: `PUBLIC_PATHS` đi
+    thẳng qua auth, nên nếu trần nằm sai chỗ thì `/health` thành một cửa nhận
+    thân request không giới hạn."""
+    response = app_with_keys.post("/health", content=_than_qua_tran())
+    assert response.status_code == 413
+
+
+def test_than_hop_le_lon_nhat_KHONG_bi_chan(app_with_keys: TestClient) -> None:
+    """⭐ 204.090 byte — `/ingest` với 1000 `doc_ids` × 200 ký tự, đúng trần mà
+    `StartRequest` tự khai. Một trần đặt thấp hơn con số này làm chết đường
+    ingest, và triệu chứng ("ingest thỉnh thoảng 413") không trỏ về đây."""
+    body = json.dumps({"config": "c" * 63, "doc_ids": ["d" * 200] * 1000}).encode()
+    assert len(body) == 204_090
+    response = app_with_keys.post(
+        "/admin/ingest",
+        content=body,
+        headers={**bearer(ADMIN_KEY), "content-type": "application/json"},
+    )
+    # ⚠️ Bản đầu gọi `/ingest/start` — một đường **không tồn tại**. Nó trả 404,
+    # và `!= 413` xanh vì lý do sai: một bài test không thể đỏ. Nên ở đây ghim
+    # thẳng con số status, không ghim một phép **khác**.
+    assert response.status_code != 404, "route sai thì bài này không đo gì cả"
+    assert response.status_code != 413
+
+
+# ---------------------------------------------------------------------------
 # 2. ⭐⭐ Không route nào lọt ra ngoài
 # ---------------------------------------------------------------------------
 

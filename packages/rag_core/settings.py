@@ -191,6 +191,17 @@ class Settings(BaseSettings):
     biến mất mà không chạy `finally` (tiến trình bị giết) — ca duy nhất mà
     đường `resolve()` không phủ."""
 
+    # `NEW-12` — trần kích thước THÂN request, ở tầng ASGI.
+    max_body_bytes: int = Field(default=1024 * 1024, ge=1024)
+    """Thân request hợp lệ **lớn nhất đo được** là 204.090 byte (`/ingest` với
+    1000 `doc_ids` × 200 ký tự); `/chat` đầy đủ tiếng Việt là 24.083 byte. Mặc
+    định 1 MiB để dư 5,1×.
+
+    ⚠️ Nó là thứ thật sự đóng `SEC-04`: `MAX_FILTER_VALUES = 100` chặn **số
+    lượng** giá trị filter chứ không chặn **độ dài** từng giá trị, nên một thân
+    100 MB vẫn hợp lệ với mọi phép kiểm theo-trường. Một trần tính bằng byte
+    của cả thân không phải liệt kê trục nào."""
+
     # ------------------------------------------------------- LLM Router (W4-08)
     chat_fallback_provider: Literal["openrouter", "glm", "none"] = "none"
     """Nhánh dự phòng khi nhà cung cấp chính hỏng. `none` = chỉ một nhánh.
