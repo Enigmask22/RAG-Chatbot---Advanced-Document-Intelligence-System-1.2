@@ -195,6 +195,8 @@ def app(tracing_workspace: Path, database: Any) -> Iterator[tuple[TestClient, Re
         bundle_version="0.2.0",
         api_keys_file=tracing_workspace / "api-keys.json",
         chat_cache=False,
+        # Bộ đếm hạn mức cục bộ, bất kể Docker: xem chú thích ở `chat_app.make`.
+        quota_shared=False,
         chat_rewrite=False,
     )
     api = create_app(

@@ -107,6 +107,8 @@ def make_client(root: Path, world: World, *, pin: str | None = None) -> TestClie
         bundle_version=pin,
         log_level="CRITICAL",
         api_keys_file=keys_file(root.parent),
+        # Bộ đếm hạn mức cục bộ, bất kể Docker: xem chú thích ở `chat_app.make`.
+        quota_shared=False,
     )
     app = create_app(settings=settings, build_runtime=world.build, probe_factory=world.probes)
     return TestClient(app, headers={"Authorization": f"Bearer {ADMIN_KEY}"})
@@ -247,7 +249,7 @@ def test_ready_does_not_probe_qdrant_before_a_bundle_exists(tmp_path: Path, worl
     def probes(registry: BundleRegistry) -> ReadinessProbes:
         return ReadinessProbes(checks={"qdrant": lambda: probed.append(1)}, ttl_s=0.0)
 
-    settings = Settings(bundle_root=tmp_path / "trống", log_level="CRITICAL")
+    settings = Settings(bundle_root=tmp_path / "trống", log_level="CRITICAL", quota_shared=False)
     with TestClient(
         create_app(settings=settings, build_runtime=world.build, probe_factory=probes)
     ) as client:
@@ -301,7 +303,10 @@ def test_the_test_client_cannot_prove_streaming_works(bundles: Path, world: Worl
     from fastapi.responses import StreamingResponse
 
     settings = Settings(
-        bundle_root=bundles, log_level="CRITICAL", api_keys_file=keys_file(bundles.parent)
+        bundle_root=bundles,
+        log_level="CRITICAL",
+        api_keys_file=keys_file(bundles.parent),
+        quota_shared=False,
     )
     app = create_app(settings=settings, build_runtime=world.build, probe_factory=world.probes)
 
@@ -321,7 +326,10 @@ def test_a_500_still_carries_the_request_id(bundles: Path, world: World) -> None
     mã nhất: `ServerErrorMiddleware` của Starlette nằm **ngoài** middleware này
     nên 500 do nó gửi không đi qua `send` đã bọc."""
     settings = Settings(
-        bundle_root=bundles, log_level="CRITICAL", api_keys_file=keys_file(bundles.parent)
+        bundle_root=bundles,
+        log_level="CRITICAL",
+        api_keys_file=keys_file(bundles.parent),
+        quota_shared=False,
     )
     app = create_app(settings=settings, build_runtime=world.build, probe_factory=world.probes)
 
@@ -410,6 +418,7 @@ def test_an_unclassified_failure_is_still_a_refusal_not_a_500(bundles: Path, wor
         bundle_version="0.2.0",
         log_level="CRITICAL",
         api_keys_file=keys_file(bundles.parent),
+        quota_shared=False,
     )
     fails = False
 

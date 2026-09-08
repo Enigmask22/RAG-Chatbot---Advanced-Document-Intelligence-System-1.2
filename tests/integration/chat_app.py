@@ -290,6 +290,11 @@ def make() -> FastAPI:
         # giữa các test, và một câu trả lời cache từ test này trả cho test kia
         # là loại đỏ giả khó truy nhất.
         chat_cache=os.environ.get(ENV_CACHE) == "1",
+        # Cùng lý lẽ, học lại lần thứ năm trong ngày 08/09/2026: `quota_shared`
+        # mặc định True nghĩa là bộ đếm hạn mức đổi giữa cục bộ và Redis theo
+        # việc Docker đang bật hay tắt — một bài test mà kết quả do một thứ
+        # ngoài repo quyết định.
+        quota_shared=False,
     )
     app = create_app(settings=settings, build_runtime=_build, probe_factory=_probes)
     app.state.chat.llm = ScriptedLLM()
