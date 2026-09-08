@@ -140,7 +140,10 @@ tôi**:
   `CostBudget` và hạn mức nhịp **cùng lúc** mất hiệu lực theo tỉ lệ số replica —
   ba nợ một chỗ trả"*. Hai trong ba đã trả. Còn **single-flight**, và nó là cái
   khó nhất: gộp request đang bay cần một khoá phân tán, không phải một bộ đếm.
-* 💡 **`degraded` chưa lên bảng.** Nó là con số duy nhất phân biệt *"hạn mức
-  đang đúng"* với *"hạn mức đang là N× và không ai biết"*, và hôm nay nó chỉ
-  sống trong log. Một dòng ở `/metrics` là việc nhỏ; chưa mở nợ vì `W5-07` đã có
-  chỗ đúng để đặt và lượt này không đụng tới `MetricsSink`.
+* ~~💡 `degraded` chưa lên bảng~~ **đã đóng cùng ngày** (`71dfc8b`):
+  `rag_quota_degraded_total{counter=ratelimit|daily_spend}` ở `/metrics`, khai 0
+  từ lúc khởi động. Nó là con số duy nhất phân biệt *"hạn mức đang đúng"* với
+  *"hạn mức đang là N× và không ai biết"*. ⚠️ Lượt ấy còn tìm ra một lỗ
+  `NEW-10` để lại (`single_flight` thiếu trong `_declare_zero`) **và** lần tái
+  phạm thứ năm trong ngày của lỗi phụ-thuộc-môi-trường — fixture của
+  `test_metrics_endpoint` không khai `quota_shared=False` nên đỏ khi Docker bật.
