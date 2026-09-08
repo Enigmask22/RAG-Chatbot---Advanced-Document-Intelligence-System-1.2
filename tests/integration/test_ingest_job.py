@@ -39,7 +39,7 @@ from arq import Worker, create_pool
 from arq.connections import RedisSettings
 from fastapi.testclient import TestClient
 
-from pipeline.corpus.manifest import CorpusEntry, write_manifest
+from pipeline.corpus.manifest import CorpusEntry, load_manifest, write_manifest
 from pipeline.ingest.app import create_app
 from pipeline.ingest.schemas import IngestRequest, JobState, resolve_config
 from pipeline.ingest.store import JobStore
@@ -317,6 +317,114 @@ class TestTienDo:
             "d-1",
             "d-2",
         }, "index lại một tài liệu đã xoá mất hai tài liệu kia"
+
+
+class TestUploadNEW11:
+    """Cửa nhận tài liệu, đi hết đường thật: đăng ký → job ingest → điểm Qdrant."""
+
+    async def test_mot_tai_lieu_tai_len_di_het_duong_toi_index(
+        self, client: TestClient, workspace: tuple[str, Path]
+    ) -> None:
+        """Upload không phải đường tắt vào prompt — nó là bước ĐĂNG KÝ; index
+        vẫn là job ingest bình thường với `doc_ids` từ biên nhận, và ba tài
+        liệu có sẵn không được đụng tới (bài học `doc_ids` là phạm-vi-lượt)."""
+        name, root = workspace
+        content = "Đầu tư công cho thuỷ lợi tăng đều qua các năm gần đây. " * 20
+        response = client.post(
+            "/upload",
+            json={
+                "config": name,
+                "title": "Báo cáo thuỷ lợi 2026",
+                "content": content,
+                "license": "CC BY 4.0",
+                "source_url": "https://example.org/thuy-loi",
+                "uploaded_by": "acme:key-1",
+            },
+        )
+        assert response.status_code == 201, response.text
+        receipt = response.json()
+        doc_id = receipt["doc_id"]
+
+        # Biên nhận khớp đĩa và khớp sổ — trước khi index chạy.
+        assert (root / "corpus" / receipt["relative_path"]).read_text(encoding="utf-8") == content
+        entries = load_manifest(root / "manifest.csv")
+        assert entries[-1].doc_id == doc_id
+        assert entries[-1].source == "upload"
+        assert "acme:key-1" in entries[-1].notes
+
+        job_id = client.post("/ingest", json={"config": name, "doc_ids": [doc_id]}).json()["job_id"]
+        assert await _drain(f"arq:test:{name}") == 1
+        done = client.get(f"/ingest/{job_id}").json()
+        assert done["state"] == "done", done.get("error")
+        assert done["documents_total"] == 1
+        assert done["chunks_embedded"] > 0
+
+        from rag_core.embedding import HashingEmbeddingProvider
+        from rag_core.retrieval.qdrant_store import QdrantDenseRetriever
+
+        store = QdrantDenseRetriever(
+            HashingEmbeddingProvider(dimension=64),
+            collection=name.replace("-", "_"),
+            url=QDRANT_URL,
+        )
+        chunks = store.fetch_doc_chunks([doc_id])
+        assert chunks, "tài liệu tải lên phải thành điểm trong collection"
+        assert all(c.doc_id == doc_id for c in chunks)
+
+    async def test_trung_noi_dung_la_409_va_khong_ghi_gi(
+        self, client: TestClient, workspace: tuple[str, Path]
+    ) -> None:
+        name, root = workspace
+        body = {
+            "config": name,
+            "title": "Bản một",
+            "content": "Cùng một ruột, hai tiêu đề khác nhau. " * 30,
+            "license": "CC0 1.0",
+            "source_url": "https://example.org/mot",
+        }
+        assert client.post("/upload", json=body).status_code == 201
+        again = client.post(
+            "/upload", json={**body, "title": "Bản hai", "source_url": "https://example.org/hai"}
+        )
+        assert again.status_code == 409
+        assert len(load_manifest(root / "manifest.csv")) == 4, (
+            "409 không được để lại entry thứ hai (3 có sẵn + 1 đã nhận)"
+        )
+
+    async def test_manifest_khong_ton_tai_la_400_khong_tu_tao(
+        self, client: TestClient, workspace: tuple[str, Path]
+    ) -> None:
+        """Một config gõ nhầm phải chết ở cửa, không sinh một manifest song song
+        mà không đường đọc nào biết tới."""
+        name, root = workspace
+        orphan = f"{name}-mo-coi"
+        (root / "configs" / f"{orphan}.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "name": orphan,
+                    "tenant_id": "test",
+                    "manifest_path": str(root / "khong-ton-tai.csv"),
+                    "corpus_dir": str(root / "corpus"),
+                    "embedding_model": "hashing:64",
+                    "use_cache": False,
+                    "state_dir": str(root / "state"),
+                }
+            ),
+            encoding="utf-8",
+        )
+        response = client.post(
+            "/upload",
+            json={
+                "config": orphan,
+                "title": "Đi lạc",
+                "content": "Nội dung nào đó đủ dài để hợp lệ. " * 20,
+                "license": "CC BY 4.0",
+                "source_url": "https://example.org/lac",
+            },
+        )
+        assert response.status_code == 400
+        assert "corpus đã đăng ký" in response.json()["detail"]
+        assert not (root / "khong-ton-tai.csv").exists()
 
 
 class TestRetry:

@@ -41,7 +41,9 @@ import re
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from rag_core.schemas import LICENSE_ALLOWLIST, DocType, Language
 
 if TYPE_CHECKING:
     from rag_core.settings import Settings
@@ -82,6 +84,59 @@ class StartRequest(BaseModel):
     theo lô vài chục tài liệu) và dưới mức gây hại."""
 
     recreate: bool = False
+
+
+MAX_UPLOAD_BYTES = 512 * 1024
+"""Trần nội dung upload, byte UTF-8. ⚠️ Phải bằng đúng
+`pipeline.ingest.upload.MAX_UPLOAD_BYTES` — hai plane không import được nhau
+nên hằng số tồn tại hai lần, và `tests/unit/test_upload.py` ghim chúng bằng
+nhau (họ quan-hệ của `NEW-13`: phép kiểm là quan hệ, không phải bản chép tay
+thứ ba). Lệch chiều nào cũng tệ: proxy rộng hơn thì upload hợp lệ chết ở dịch
+vụ trong với thông điệp không tới được người dùng; proxy hẹp hơn thì trần thật
+không bao giờ chạm tới."""
+
+
+class UploadRequest(BaseModel):
+    """Bản kiểm SỚM của `pipeline.ingest.upload.UploadRequest` — `NEW-11`.
+
+    Kiểm ở proxy để lỗi trả về là một 422 nói tiếng người (giấy phép nào được
+    nhận, trần bao nhiêu byte) thay vì một 4xx đã bị `_call` che thân (`AU-03`).
+    `uploaded_by` cố ý KHÔNG có ở đây: nó là danh tính đã xác thực, proxy tự
+    điền từ principal — client khai nó là một trường thừa và `extra="forbid"`
+    từ chối."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    config: str = Field(min_length=1, max_length=63)
+    title: str = Field(min_length=3, max_length=300)
+    content: str = Field(min_length=1, max_length=MAX_UPLOAD_BYTES)
+    license: str = Field(min_length=1, max_length=100)
+    source_url: str = Field(min_length=1, max_length=1000)
+    license_url: str = Field(default="", max_length=1000)
+    lang: Language = Language.UNKNOWN
+    doc_type: DocType = DocType.OTHER
+    notes: str = Field(default="", max_length=500)
+
+    @field_validator("license")
+    @classmethod
+    def _license_must_be_allowed(cls, value: str) -> str:
+        if value not in LICENSE_ALLOWLIST:
+            raise ValueError(
+                f"giấy phép {value!r} không nằm trong danh sách cho phép "
+                f"redistribute + phái sinh. Chỉ nhận: {sorted(LICENSE_ALLOWLIST)}"
+            )
+        return value
+
+    @field_validator("content")
+    @classmethod
+    def _content_within_byte_budget(cls, value: str) -> str:
+        size = len(value.encode("utf-8"))
+        if size > MAX_UPLOAD_BYTES:
+            raise ValueError(
+                f"nội dung {size} byte UTF-8, trần {MAX_UPLOAD_BYTES} byte "
+                "(tiếng Việt có dấu là 2–3 byte mỗi ký tự)"
+            )
+        return value
 
 
 def _base_url(settings: Settings) -> str:
@@ -129,6 +184,26 @@ async def start(body: StartRequest, settings: SettingsDep) -> Any:
         "POST",
         f"{_base_url(settings)}/ingest",
         {"config": body.config, "doc_ids": list(body.doc_ids), "recreate": body.recreate},
+        headers=_auth_headers(settings),
+    )
+
+
+@router.post("/upload", status_code=status.HTTP_201_CREATED)
+async def upload(body: UploadRequest, request: Request, settings: SettingsDep) -> Any:
+    """Đăng ký một tài liệu công khai vào corpus, qua dịch vụ ingest — `NEW-11`.
+
+    Trả biên nhận có `doc_id`; index nó bằng `POST /admin/ingest` với
+    `doc_ids=[doc_id]`. Danh tính người tải đi vào manifest — sổ đăng ký corpus
+    nói được *ai* đưa tài liệu này vào, đó là nửa "ai chịu trách nhiệm" của
+    quyết định `NEW-11`.
+    """
+    principal = getattr(request.state, "principal", None)
+    uploaded_by = f"{principal.tenant_id}:{principal.key_id}" if principal else ""
+    payload = body.model_dump(mode="json") | {"uploaded_by": uploaded_by}
+    return await _call(
+        "POST",
+        f"{_base_url(settings)}/upload",
+        payload,
         headers=_auth_headers(settings),
     )
 

@@ -20,6 +20,7 @@ from typing import Annotated, Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 __all__ = [
+    "LICENSE_ALLOWLIST",
     "Answer",
     "Chunk",
     "Citation",
@@ -35,6 +36,34 @@ __all__ = [
 ]
 
 NonEmptyStr = Annotated[str, Field(min_length=1)]
+
+LICENSE_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "CC BY 4.0",
+        "CC BY 3.0",
+        "CC BY 3.0 IGO",
+        "CC BY-SA 4.0",
+        "CC BY-NC 4.0",
+        "CC BY-NC-SA 4.0",
+        "CC0 1.0",
+        "Public Domain",
+        "OGL v3",
+        "Vietnam Government Work",
+    }
+)
+"""Giấy phép cho phép redistribute **và** cho phép tạo tác phẩm phái sinh.
+
+Sống ở `rag_core` từ `NEW-11` (2026-09-08) vì nó là **từ vựng chung hai plane**:
+Pipeline Plane cưỡng chế nó ở cửa manifest (`pipeline.corpus.manifest`, nơi nó
+sinh ra), còn Serving Plane cần nó để từ chối sớm một upload mang giấy phép
+ngoài danh sách — và serving **không được import pipeline**
+(`test_architecture_boundaries`). `pipeline.corpus.manifest` re-export nguyên
+tên, mọi người dùng cũ giữ nguyên câu import.
+
+`CC BY-NC*` được chấp nhận vì dự án phi thương mại; nếu sau này đem đi thương
+mại hoá thì phải rà lại danh sách này trước. Giấy phép có `ND` (NoDerivatives)
+bị từ chối vì chunking + sinh context bằng LLM là tạo tác phẩm phái sinh.
+"""
 
 
 def _utcnow() -> datetime:

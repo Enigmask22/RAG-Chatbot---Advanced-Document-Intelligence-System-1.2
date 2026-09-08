@@ -149,14 +149,29 @@ footer { max-width: 1240px; margin: 0 auto; padding: 0 20px 28px; color: var(--m
     </div>
 
     <div class="card">
-      <h2>Tiến độ ingest</h2>
-      <p class="note">Chạy lại một config đã có và xem tiến độ. Hệ thống
-        <strong>không</strong> nhận tài liệu tải lên: corpus phải công khai và có
-        license cho phép phát hành lại.</p>
+      <h2>Corpus &amp; ingest</h2>
+      <p class="note">Chạy lại một config đã có và xem tiến độ.</p>
       <div class="row">
         <input id="ingestConfig" placeholder="tên config, ví dụ bgem3">
         <button id="ingestRun">Chạy</button>
       </div>
+      <p class="note" style="margin-top:12px">Tải một tài liệu <strong>công
+        khai</strong> lên corpus (NEW-11): bắt buộc URL nguồn và giấy phép cho
+        phép phát hành lại + phái sinh — cùng cửa kiểm với mọi tài liệu corpus.
+        Tài liệu vào index qua job ingest; nó chỉ được phục vụ chính thức sau
+        khi build và promote một bundle mới đã đo lại.</p>
+      <div class="row">
+        <input id="upTitle" placeholder="tiêu đề tài liệu">
+      </div>
+      <div class="row">
+        <input id="upSource" placeholder="URL nguồn công khai (https://…)">
+      </div>
+      <div class="row">
+        <select id="upLicense"></select>
+        <input id="upFile" type="file" accept=".txt,.md">
+        <button id="upSend">Tải lên &amp; index</button>
+      </div>
+      <p class="note" id="upText" style="margin:6px 0 0"></p>
       <div id="ingestBox" class="hidden" style="margin-top:10px">
         <div class="progress"><div id="ingestBar"></div></div>
         <p class="note" id="ingestText" style="margin:6px 0 0"></p>
@@ -622,20 +637,18 @@ async function pollIngest(jobId) {
   }
 }
 
-$("ingestRun").onclick = async () => {
-  const config = $("ingestConfig").value.trim();
-  if (!config) return;
+async function startIngest(config, docIds) {
   $("ingestBox").classList.remove("hidden");
   $("ingestText").textContent = "đang xếp hàng…";
   try {
     const r = await fetch("/admin/ingest", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
-      body: JSON.stringify({ config }),
+      body: JSON.stringify(docIds.length ? { config, doc_ids: docIds } : { config }),
     });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
-      $("ingestText").textContent = "HTTP " + r.status + " — " + (body.detail || "từ chối");
+      $("ingestText").textContent = "HTTP " + r.status + " — " + _detail(body);
       return;
     }
     const job = await r.json();
@@ -644,6 +657,73 @@ $("ingestRun").onclick = async () => {
     ingestTimer = setInterval(() => pollIngest(job.job_id), 2000);
   } catch (e) {
     $("ingestText").textContent = "không gọi được dịch vụ ingest";
+  }
+}
+
+$("ingestRun").onclick = () => {
+  const config = $("ingestConfig").value.trim();
+  if (config) startIngest(config, []);
+};
+
+/* --------------------------------------------------- upload corpus (NEW-11) */
+
+/* ⚠️ Phải trùng KHỚP rag_core.schemas.LICENSE_ALLOWLIST — máy chủ mới là chỗ
+   cưỡng chế; danh sách này chỉ để người dùng không phải đoán. Một bài test
+   quan hệ ghim hai phía bằng nhau. */
+const LICENSES = [
+  "CC BY 4.0",
+  "CC BY 3.0",
+  "CC BY 3.0 IGO",
+  "CC BY-SA 4.0",
+  "CC BY-NC 4.0",
+  "CC BY-NC-SA 4.0",
+  "CC0 1.0",
+  "Public Domain",
+  "OGL v3",
+  "Vietnam Government Work",
+];
+for (const name of LICENSES) {
+  const option = document.createElement("option");
+  option.value = name;
+  option.appendChild(document.createTextNode(name));
+  $("upLicense").appendChild(option);
+}
+
+function _detail(body) {
+  /* 422 của FastAPI mang `detail` dạng danh sách; chỉ in khi là chuỗi. */
+  return typeof body.detail === "string" ? body.detail : "yêu cầu không hợp lệ";
+}
+
+$("upSend").onclick = async () => {
+  const config = $("ingestConfig").value.trim();
+  const file = $("upFile").files[0];
+  const title = $("upTitle").value.trim();
+  const source = $("upSource").value.trim();
+  if (!config || !file || !title || !source) {
+    $("upText").textContent = "cần tên config, tiêu đề, URL nguồn và một file .txt/.md";
+    return;
+  }
+  $("upText").textContent = "đang tải lên…";
+  try {
+    const content = await file.text();
+    const r = await fetch("/admin/ingest/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+      body: JSON.stringify({
+        config, title, content,
+        license: $("upLicense").value,
+        source_url: source,
+      }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      $("upText").textContent = "HTTP " + r.status + " — " + _detail(body);
+      return;
+    }
+    $("upText").textContent = "đã đăng ký " + body.doc_id + " — bắt đầu index…";
+    startIngest(config, [body.doc_id]);
+  } catch (e) {
+    $("upText").textContent = "không gọi được máy chủ";
   }
 };
 

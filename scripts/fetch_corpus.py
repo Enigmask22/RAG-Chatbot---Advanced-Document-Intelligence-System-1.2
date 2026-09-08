@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "packages"))
 from pipeline.corpus.manifest import (
     CorpusEntry,
     load_manifest,
+    slugify,
     write_manifest,
 )
 from pipeline.corpus.worldbank import USER_AGENT, WdsDocument, search_wds
@@ -57,11 +58,6 @@ class FetchStats:
     skipped_existing: int = 0
     rejected: int = 0
     failed: int = 0
-
-
-def slugify(text: str, max_length: int = 60) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
-    return (slug[:max_length].rstrip("-")) or "untitled"
 
 
 def download(url: str, timeout: float) -> bytes:

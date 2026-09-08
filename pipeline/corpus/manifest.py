@@ -15,41 +15,34 @@ phát tán nguyên bản chứ không cho phép làm việc đó.
 from __future__ import annotations
 
 import csv
+import re
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from rag_core.schemas import DocType, Language
+from rag_core.schemas import LICENSE_ALLOWLIST, DocType, Language
 
 __all__ = [
     "LICENSE_ALLOWLIST",
     "CorpusEntry",
     "load_manifest",
+    "slugify",
     "validate_manifest",
     "write_manifest",
 ]
 
-LICENSE_ALLOWLIST: frozenset[str] = frozenset(
-    {
-        "CC BY 4.0",
-        "CC BY 3.0",
-        "CC BY 3.0 IGO",
-        "CC BY-SA 4.0",
-        "CC BY-NC 4.0",
-        "CC BY-NC-SA 4.0",
-        "CC0 1.0",
-        "Public Domain",
-        "OGL v3",
-        "Vietnam Government Work",
-    }
-)
-"""Giấy phép cho phép redistribute **và** cho phép tạo tác phẩm phái sinh.
+# `NEW-11`: danh sách sống ở `rag_core.schemas` vì serving cũng cần nó (từ chối
+# sớm một upload) mà không được import pipeline. Re-export giữ nguyên mọi câu
+# import cũ — chỗ cưỡng chế vẫn là validator của `CorpusEntry` bên dưới.
 
-`CC BY-NC*` được chấp nhận vì dự án phi thương mại; nếu sau này đem đi thương mại
-hoá thì phải rà lại danh sách này trước.
-"""
+
+def slugify(text: str, max_length: int = 60) -> str:
+    """Tên file an toàn từ một tiêu đề — dùng cho tài liệu tải về VÀ tải lên."""
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
+    return (slug[:max_length].rstrip("-")) or "untitled"
+
 
 _FIELDS = (
     "doc_id",

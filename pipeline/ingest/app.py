@@ -30,6 +30,7 @@ from rag_core.settings import get_settings
 from .schemas import IngestRequest, JobState, JobStatus, resolve_config
 from .store import JobStore
 from .tasks import INGEST_TASK
+from .upload import DuplicateUpload, UploadReceipt, UploadRequest, receive_upload
 
 __all__ = ["app", "create_app"]
 
@@ -179,6 +180,21 @@ def create_app() -> FastAPI:
         if job is None:  # pragma: no cover - chỉ xảy ra khi `_job_id` trùng
             raise HTTPException(status.HTTP_409_CONFLICT, f"job {job_id} đã tồn tại")
         return QueuedJob.of(queued)
+
+    @api.post("/upload", status_code=status.HTTP_201_CREATED)
+    def upload(request: UploadRequest, _: GuardDep) -> UploadReceipt:
+        """Đăng ký một tài liệu công khai vào corpus — `NEW-11`.
+
+        `def` thường, không `async`: `receive_upload` là IO đĩa chặn (đọc +
+        ghi lại manifest), FastAPI tự đưa nó vào threadpool. Endpoint này chỉ
+        ghi sổ — index là việc của `POST /ingest` với `doc_ids` từ biên nhận.
+        """
+        try:
+            return receive_upload(request)
+        except DuplicateUpload as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
     @api.get("/ingest/{job_id}")
     async def get_job(job_id: str, store: StoreDep, _: GuardDep) -> QueuedJob:
